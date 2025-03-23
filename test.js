@@ -725,7 +725,6 @@ wss.on('connection', function connection(ws) {
         }
     });
 });
-// Action handlers
 function handleRaise(data, tableId) {
     const table = tables.get(tableId);
     if (!table) return;
@@ -748,27 +747,7 @@ function handleRaise(data, tableId) {
     table.currentPlayerIndex = getNextPlayerIndex(table.currentPlayerIndex, tableId);
     broadcastGameState(tableId);
     bettingRound(tableId);
-
-    broadcast({
-        type: "updateActionHistory",
-        action: `${data.playerName} raised to ${raiseAmount}`, tableId: tableId
-    }, tableId);
-    
-    broadcast({ type: "raise", playerName: data.playerName, amount: raiseAmount, tableId: tableId }, tableId);
-
-    // ✅ Ensure other players need to act again
-    table.currentPlayerIndex = getNextPlayerIndex(table.currentPlayerIndex, tableId);
-    
-    if (allPlayersAllIn(table)) {
-        console.log("🔹 All players are all-in. Moving to showdown.");
-        setTimeout(showdown, 2000, tableId);
-        return;
-    }
-
-    broadcastGameState(tableId);
-    bettingRound(tableId);
 }
-
 
 
 
