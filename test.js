@@ -379,7 +379,7 @@ function showdown(tableId) {
     //  ✅  Record winning hand in history
     broadcast({
         type: "updateActionHistory",
-        action: ` 🏆  Winner: ${winners.map(w => w.name).join(", ")} - Hand: ${formatHand(revealedHands[0].hand)}`
+        action: `🏆  Winner: ${winners.map(w => w.name).join(", ")} with ${revealedHands[0].handType}`
     }, tableId);
     distributePot(tableId);
     //  ✅  Give players the option to "Show" or "Hide" their hands
@@ -516,7 +516,7 @@ function evaluateHand(cards) {
     if (isThreeOfAKind(sortedHand, ranks)) return { handValue: 4, bestCards: sortedHand };
     if (isTwoPair(sortedHand, ranks)) return { handValue: 3, bestCards: sortedHand };
     if (isOnePair(sortedHand, ranks)) return { handValue: 2, bestCards: sortedHand };
-    return { handValue: 1, bestCards: sortedHand.slice(0, 5) };
+    return { handValue: 1, bestCards: sortedHand.slice(0, 5), handType: "High Card" };
     // High card
 }
 // Helper functions to check for different hand types
