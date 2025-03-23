@@ -736,21 +736,15 @@ function handleRaise(data, tableId) {
         return;
     }
 
-    const minRaise = table.currentBet * 2; // ✅ Enforce min-raise rule
-    let raiseAmount = Math.min(parseInt(data.amount), player.tokens);
+    const minRaise = table.bigBlind;  // The minimum raise is the big blind amount
+    let raiseAmount = Math.min(parseInt(data.amount), player.tokens);  // Player cannot raise more than their tokens
 
-    if (raiseAmount <= table.currentBet) {
-        console.log(`❌ Invalid raise. Must be at least ${minRaise}`);
+    if (raiseAmount < minRaise) {
+        console.log(`❌ Invalid raise. Must be at least the big blind amount: ${minRaise}`);
         return;
     }
 
     const actualRaiseAmount = raiseAmount - player.currentBet;
-
-    // ✅ Ensure raise is valid
-    if (raiseAmount < minRaise && raiseAmount < player.tokens) {
-        console.log(`❌ ${player.name} attempted an invalid raise.`);
-        return;
-    }
 
     // ✅ Deduct the amount from the player's tokens
     player.tokens -= actualRaiseAmount;
@@ -786,6 +780,7 @@ function handleRaise(data, tableId) {
     broadcastGameState(tableId);
     bettingRound(tableId);
 }
+
 
 
 
