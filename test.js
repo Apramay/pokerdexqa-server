@@ -368,7 +368,6 @@ function showdown(tableId) {
         return {
             playerName: winner.name,
             hand: bestCards  //  ✅  Showing only the best 5 cards
-                        handType: handType
 
 
         };
