@@ -86,6 +86,12 @@ function startGame(tableId) {
     broadcast({ type: "startGame" }, tableId);
     broadcastGameState(tableId); 
 }
+
+function getActivePlayers(table) {
+    return table.players.filter(p => p.status === "active" && !p.allIn && p.tokens > 0);
+}
+
+
 // Function to start a new hand
 function startNewHand(tableId) {
     const table = tables.get(tableId);
@@ -191,32 +197,24 @@ function bettingRound(tableId) {
     const table = tables.get(tableId);
     if (!table) return;
 
-    console.log("🔄 Starting betting round..."); 
+    console.log("🔄 Starting betting round...");
 
     let activePlayers = table.players.filter(p => p.status === "active" && !p.allIn && p.tokens > 0);
-    
-    if (activePlayers.length <= 1) {
-        console.log("✅ Only one active player left, moving to the next round.");
-        setTimeout(nextRound, 1000, tableId);
+
+    // ✅ If only one active player remains, end the hand
+    if (activePlayers.length === 1) {
+        console.log(`🏆 ${activePlayers[0].name} wins by default!`);
+        activePlayers[0].tokens += table.pot;
+        table.pot = 0;
+        setTimeout(resetGame, 3000, tableId);
         return;
     }
 
-    // If all but one player is all-in, ensure BB still gets to act
+    // ✅ If all but one player is all-in, skip to showdown
     if (allPlayersAllIn(table)) {
-        let bigBlindPlayer = table.players[(table.dealerIndex + 2) % table.players.length]; // BB is two seats after dealer
-        if (bigBlindPlayer.status === "active" && !bigBlindPlayer.allIn) {
-            console.log(`🎯 Big Blind (${bigBlindPlayer.name}) must act before moving to the next round.`);
-            broadcast({
-                type: "playerTurn",
-                playerName: bigBlindPlayer.name,
-                options: ["call", "fold", "raise"]
-            }, tableId);
-            return;
-        } else {
-            console.log("🔹 All players are all-in or folded. Moving to showdown.");
-            setTimeout(showdown, 2000, tableId);
-            return;
-        }
+        console.log("🔹 All remaining players are all-in. Moving to showdown.");
+        setTimeout(showdown, 2000, tableId);
+        return;
     }
 
     const player = table.players[table.currentPlayerIndex];
@@ -231,6 +229,7 @@ function bettingRound(tableId) {
     console.log(`🎯 Waiting for player ${player.name} to act...`);
     broadcast({ type: "playerTurn", playerName: player.name, tableId: tableId }, tableId);
 }
+
 
 function isBettingRoundOver(tableId) {
     const table = tables.get(tableId);
@@ -752,9 +751,23 @@ function handleRaise(data, tableId) {
         return;
     }
 
-    const raiseAmount = Math.min(parseInt(data.amount), player.tokens); // Ensuring raise does not exceed available tokens
+    const minRaise = table.currentBet * 2; // ✅ Enforce min-raise rule
+    let raiseAmount = Math.min(parseInt(data.amount), player.tokens);
+
+    if (raiseAmount <= table.currentBet) {
+        console.log(`❌ Invalid raise. Must be at least ${minRaise}`);
+        return;
+    }
+
     const actualRaiseAmount = raiseAmount - player.currentBet;
-    
+
+    // ✅ Ensure raise is valid
+    if (raiseAmount < minRaise && raiseAmount < player.tokens) {
+        console.log(`❌ ${player.name} attempted an invalid raise.`);
+        return;
+    }
+
+    // ✅ Deduct the amount from the player's tokens
     player.tokens -= actualRaiseAmount;
     table.pot += actualRaiseAmount;
     table.currentBet = raiseAmount;
@@ -765,25 +778,22 @@ function handleRaise(data, tableId) {
         console.log(`${player.name} is ALL-IN with ${raiseAmount}!`);
     }
 
+    // ✅ Reset playersWhoActed for everyone except raiser
+    table.playersWhoActed.clear();
     table.playersWhoActed.add(player.name);
+
     broadcast({
         type: "updateActionHistory",
-        action: `${data.playerName} raised ${raiseAmount}`
+        action: `${data.playerName} raised to ${raiseAmount}`
     }, tableId);
     
     broadcast({ type: "raise", playerName: data.playerName, amount: raiseAmount, tableId }, tableId);
 
-    // Reset actions for others if a raise occurred
-    table.players.forEach(p => {
-        if (p.name !== player.name) {
-            table.playersWhoActed.delete(p.name);
-        }
-    });
-
+    // ✅ Ensure other players need to act again
     table.currentPlayerIndex = getNextPlayerIndex(table.currentPlayerIndex, tableId);
     
     if (allPlayersAllIn(table)) {
-        console.log("🔹 All players are all-in. Skipping betting rounds and moving to showdown.");
+        console.log("🔹 All players are all-in. Moving to showdown.");
         setTimeout(showdown, 2000, tableId);
         return;
     }
@@ -791,6 +801,7 @@ function handleRaise(data, tableId) {
     broadcastGameState(tableId);
     bettingRound(tableId);
 }
+
 
 
 function handleBet(data, tableId) {
@@ -871,33 +882,41 @@ if (callAmount <= player.tokens) {
 }
 }
 function handleFold(data, tableId) {
-const table = tables.get(tableId);
-if (!table) return;
+    const table = tables.get(tableId);
+    if (!table) return;
 
-console.log(` 🔄  ${data.playerName} performed action: ${data.type}`);
-console.log("Before updating playersWhoActed:", [...table.playersWhoActed]);
-const player = table.players.find(p => p.name === data.playerName);
-if (!player) {
-    console.error("Player not found:", data.playerName);
-    return; //  ✅  Prevents processing an invalid action
-}
-player.status = "folded";
-table.playersWhoActed.add(player.name);
-console.log(` ❌  ${player.name} folded.`);
-broadcast({
-    type: "updateActionHistory",
-    action: `${data.playerName} folded`
-}, tableId);
-broadcast({ type: "fold", playerName: data.playerName , tableId: tableId }, tableId);
-table.currentPlayerIndex = getNextPlayerIndex(table.currentPlayerIndex, tableId);
-if (table.currentPlayerIndex !== -1) {
+    const player = table.players.find(p => p.name === data.playerName);
+    if (!player) {
+        console.error("Player not found:", data.playerName);
+        return;
+    }
+
+    player.status = "folded";
+    table.playersWhoActed.add(player.name);
+    console.log(`❌ ${player.name} folded.`);
+
+    broadcast({
+        type: "updateActionHistory",
+        action: `${data.playerName} folded`
+    }, tableId);
+
+    broadcast({ type: "fold", playerName: data.playerName, tableId: tableId }, tableId);
+
+    // ✅ Check if only one player remains
+    let activePlayers = table.players.filter(p => p.status === "active" && !p.allIn);
+    if (activePlayers.length === 1) {
+        console.log(`🏆 ${activePlayers[0].name} wins the pot (${table.pot}) by default!`);
+        activePlayers[0].tokens += table.pot;
+        table.pot = 0;
+        setTimeout(resetGame, 3000, tableId);
+        return;
+    }
+
+    table.currentPlayerIndex = getNextPlayerIndex(table.currentPlayerIndex, tableId);
     bettingRound(tableId);
-} else {
-    console.log(" ✅  All players have acted. Moving to next round.");
-    setTimeout(nextRound, 1000, tableId);
+    broadcastGameState(tableId);
 }
-broadcastGameState(tableId);  //  ✅  Only update the UI once
-}
+
 function handleCheck(data, tableId) {
 const table = tables.get(tableId);
 if (!table) return;
