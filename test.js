@@ -191,28 +191,47 @@ function bettingRound(tableId) {
     const table = tables.get(tableId);
     if (!table) return;
 
-    console.log("Starting betting round..."); 
+    console.log("🔄 Starting betting round..."); 
+
     let activePlayers = table.players.filter(p => p.status === "active" && !p.allIn && p.tokens > 0);
+    
     if (activePlayers.length <= 1) {
-        console.log("Betting round over, moving to next round.");
+        console.log("✅ Only one active player left, moving to the next round.");
         setTimeout(nextRound, 1000, tableId);
         return;
     }
-    if (isBettingRoundOver(tableId)) {
-        console.log("All players have acted. Betting round is over.");
-        setTimeout(nextRound, 1000, tableId);
-        return;
+
+    // If all but one player is all-in, ensure BB still gets to act
+    if (allPlayersAllIn(table)) {
+        let bigBlindPlayer = table.players[(table.dealerIndex + 2) % table.players.length]; // BB is two seats after dealer
+        if (bigBlindPlayer.status === "active" && !bigBlindPlayer.allIn) {
+            console.log(`🎯 Big Blind (${bigBlindPlayer.name}) must act before moving to the next round.`);
+            broadcast({
+                type: "playerTurn",
+                playerName: bigBlindPlayer.name,
+                options: ["call", "fold", "raise"]
+            }, tableId);
+            return;
+        } else {
+            console.log("🔹 All players are all-in or folded. Moving to showdown.");
+            setTimeout(showdown, 2000, tableId);
+            return;
+        }
     }
+
     const player = table.players[table.currentPlayerIndex];
+
     if (table.playersWhoActed.has(player.name) && player.currentBet === table.currentBet) {
-        console.log(`${player.name} has already acted. Skipping...`);
+        console.log(`⏩ ${player.name} has already acted. Skipping...`);
         table.currentPlayerIndex = getNextPlayerIndex(table.currentPlayerIndex, tableId);
         bettingRound(tableId);
         return;
     }
-    console.log(`Waiting for player ${player.name} to act...`);
+
+    console.log(`🎯 Waiting for player ${player.name} to act...`);
     broadcast({ type: "playerTurn", playerName: player.name, tableId: tableId }, tableId);
 }
+
 function isBettingRoundOver(tableId) {
     const table = tables.get(tableId);
     if (!table) return true;
