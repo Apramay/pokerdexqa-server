@@ -729,44 +729,32 @@ wss.on('connection', function connection(ws) {
 function handleRaise(data, tableId) {
     const table = tables.get(tableId);
     if (!table) return;
-
+    
     const player = table.players.find(p => p.name === data.playerName);
-    if (!player) {
-        console.error("Player not found:", data.playerName);
-        return;
-    }
+    if (!player) return;
+    
+    const raiseAmount = parseInt(data.amount);
+    if (raiseAmount > player.tokens || raiseAmount <= table.currentBet) return;
 
-    const minRaise = table.bigBlind;  // The minimum raise is the big blind amount
-    let raiseAmount = Math.min(parseInt(data.amount), player.tokens);  // Player cannot raise more than their tokens
+    const totalBet = raiseAmount;
+    player.tokens -= (totalBet - player.currentBet);
+    table.pot += (totalBet - player.currentBet);
+    player.currentBet = totalBet;
+    table.currentBet = totalBet;
 
-    if (raiseAmount < minRaise) {
-        console.log(`❌ Invalid raise. Must be at least the big blind amount: ${minRaise}`);
-        return;
-    }
-
-    const actualRaiseAmount = raiseAmount - player.currentBet;
-
-    // ✅ Deduct the amount from the player's tokens
-    player.tokens -= actualRaiseAmount;
-    table.pot += actualRaiseAmount;
-    table.currentBet = raiseAmount;
-    player.currentBet = raiseAmount;
-
-    if (player.tokens === 0) {
-        player.allIn = true;
-        console.log(`${player.name} is ALL-IN with ${raiseAmount}!`);
-    }
-
-    // ✅ Reset playersWhoActed for everyone except raiser
-    table.playersWhoActed.clear();
+    table.playersWhoActed.clear(); // ✅ Reset all players except raiser
     table.playersWhoActed.add(player.name);
+
+    table.currentPlayerIndex = getNextPlayerIndex(table.currentPlayerIndex, tableId);
+    broadcastGameState(tableId);
+    bettingRound(tableId);
 
     broadcast({
         type: "updateActionHistory",
-        action: `${data.playerName} raised to ${raiseAmount}`
+        action: `${data.playerName} raised to ${raiseAmount}`, tableId: tableId
     }, tableId);
     
-    broadcast({ type: "raise", playerName: data.playerName, amount: raiseAmount, tableId }, tableId);
+    broadcast({ type: "raise", playerName: data.playerName, amount: raiseAmount, tableId: tableId }, tableId);
 
     // ✅ Ensure other players need to act again
     table.currentPlayerIndex = getNextPlayerIndex(table.currentPlayerIndex, tableId);
