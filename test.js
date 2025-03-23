@@ -606,29 +606,12 @@ function isOnePair(hand, ranks) {
     return false;
 }
 function compareHands(handA, handB) {
-    const evalA = evaluateHand(handA);
-    const evalB = evaluateHand(handB);
-
-    if (evalA.handValue > evalB.handValue) return 1;
-    if (evalA.handValue < evalB.handValue) return -1;
-
-    // If both hands have the same hand type, compare details
-    if (evalA.handValue === 3) { // Two Pair comparison
-        if (evalA.bestCards.highPair > evalB.bestCards.highPair) return 1;
-        if (evalA.bestCards.highPair < evalB.bestCards.highPair) return -1;
-        if (evalA.bestCards.lowPair > evalB.bestCards.lowPair) return 1;
-        if (evalA.bestCards.lowPair < evalB.bestCards.lowPair) return -1;
-        if (evalA.bestCards.kicker > evalB.bestCards.kicker) return 1;
-        if (evalA.bestCards.kicker < evalB.bestCards.kicker) return -1;
-        return 0; // Exact tie
-    }
-
-    // Default comparison for other hands
-    for (let i = 0; i < Math.min(evalA.bestCards.length, evalB.bestCards.length); i++) {
-        if (rankValues[evalA.bestCards[i].rank] > rankValues[evalB.bestCards[i].rank]) return 1;
-        if (rankValues[evalA.bestCards[i].rank] < rankValues[evalB.bestCards[i].rank]) return -1;
+    for (let i = 0; i < Math.min(handA.length, handB.length); i++) {
+        if (rankValues[handA[i].rank] > rankValues[handB[i].rank]) return 1;
+        if (rankValues[handA[i].rank] < rankValues[handB[i].rank]) return -1;
     }
     return 0;
+    // Exact tie
 }
 
 // WebSocket server event handling
