@@ -364,10 +364,12 @@ function showdown(tableId) {
     //  ✅  Automatically reveal the winner's hand
     let revealedHands = winners.map(winner => {
         const fullHand = winner.hand.concat(table.tableCards);
-        const { bestCards } = evaluateHand(fullHand); // Extract the best 5-card hand
+        const { bestCards, handType } = evaluateHand(fullHand); // Extract best hand and hand type
         return {
             playerName: winner.name,
             hand: bestCards  //  ✅  Showing only the best 5 cards
+                        handType: handType
+
 
         };
     });
