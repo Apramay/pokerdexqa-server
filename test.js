@@ -164,6 +164,8 @@ function postBlind(player, amount, tableId, isBigBlind = false) {
     }
     console.log(` 💰  ${player.name} posts ${blindAmount}. Pot: ${table.pot}, Current Bet: ${table.currentBet}`);
 }
+
+
 function getNextPlayerIndex(currentIndex, tableId) {
     const table = tables.get(tableId);
     if (!table) return -1;
@@ -287,6 +289,11 @@ function startFlopBetting(tableId) {
         console.warn(`⚠️ No valid player to start betting with at table ${tableId}`);
     }
 }
+function allPlayersAllIn(table) {
+    const activePlayers = table.players.filter(p => p.status === "active" && !p.allIn);
+    return activePlayers.length === 0; // No active players with remaining tokens
+}
+
 
 function nextRound(tableId) {
     const table = tables.get(tableId);
@@ -380,37 +387,51 @@ function distributePot(tableId) {
     const table = tables.get(tableId);
     if (!table) return;
 
+    console.log("💰 Distributing the pot...");
+
     let activePlayers = table.players.filter(p => p.status === "active" || p.allIn);
+
+    // Sort players by their all-in amounts (for side pots)
     activePlayers.sort((a, b) => a.currentBet - b.currentBet);
+
     let totalPot = table.pot;
     let sidePots = [];
+
     while (activePlayers.length > 0) {
         const minBet = activePlayers[0].currentBet;
         let potPortion = 0;
+
         activePlayers.forEach(player => {
             potPortion += Math.min(minBet, player.currentBet);
             player.currentBet -= Math.min(minBet, player.currentBet);
         });
+
         sidePots.push({ players: [...activePlayers], amount: potPortion });
         activePlayers = activePlayers.filter(p => p.currentBet > 0);
     }
+
     sidePots.forEach(sidePot => {
         let winners = determineWinners(sidePot.players, table);
         let splitPot = Math.floor(sidePot.amount / winners.length);
         winners.forEach(winner => {
             winner.tokens += splitPot;
+            console.log(`🏆 ${winner.name} wins ${splitPot} from a side pot.`);
         });
     });
+
     let remainingPot = totalPot - sidePots.reduce((acc, sp) => acc + sp.amount, 0);
     if (remainingPot > 0) {
         let mainWinners = determineWinners(table.players.filter(p => p.status === "active"), table);
         let splitPot = Math.floor(remainingPot / mainWinners.length);
         mainWinners.forEach(winner => {
             winner.tokens += splitPot;
-            console.log(`${winner.name} wins ${splitPot} from the main pot.`);
+            console.log(`🏆 ${winner.name} wins ${splitPot} from the main pot.`);
         });
     }
+
+    table.pot = 0; // Reset the pot after distribution
 }
+
 function resetGame(tableId) {
     const table = tables.get(tableId);
     if (!table) return;
@@ -678,26 +699,53 @@ wss.on('connection', function connection(ws) {
 function handleRaise(data, tableId) {
     const table = tables.get(tableId);
     if (!table) return;
-    
+
     const player = table.players.find(p => p.name === data.playerName);
-    if (!player) return;
+    if (!player) {
+        console.error("Player not found:", data.playerName);
+        return;
+    }
+
+    const raiseAmount = Math.min(parseInt(data.amount), player.tokens); // Ensuring raise does not exceed available tokens
+    const actualRaiseAmount = raiseAmount - player.currentBet;
     
-    const raiseAmount = parseInt(data.amount);
-    if (raiseAmount > player.tokens || raiseAmount <= table.currentBet) return;
+    player.tokens -= actualRaiseAmount;
+    table.pot += actualRaiseAmount;
+    table.currentBet = raiseAmount;
+    player.currentBet = raiseAmount;
 
-    const totalBet = raiseAmount;
-    player.tokens -= (totalBet - player.currentBet);
-    table.pot += (totalBet - player.currentBet);
-    player.currentBet = totalBet;
-    table.currentBet = totalBet;
+    if (player.tokens === 0) {
+        player.allIn = true;
+        console.log(`${player.name} is ALL-IN with ${raiseAmount}!`);
+    }
 
-    table.playersWhoActed.clear(); // ✅ Reset all players except raiser
     table.playersWhoActed.add(player.name);
+    broadcast({
+        type: "updateActionHistory",
+        action: `${data.playerName} raised ${raiseAmount}`
+    }, tableId);
+    
+    broadcast({ type: "raise", playerName: data.playerName, amount: raiseAmount, tableId }, tableId);
+
+    // Reset actions for others if a raise occurred
+    table.players.forEach(p => {
+        if (p.name !== player.name) {
+            table.playersWhoActed.delete(p.name);
+        }
+    });
 
     table.currentPlayerIndex = getNextPlayerIndex(table.currentPlayerIndex, tableId);
+    
+    if (allPlayersAllIn(table)) {
+        console.log("🔹 All players are all-in. Skipping betting rounds and moving to showdown.");
+        setTimeout(showdown, 2000, tableId);
+        return;
+    }
+
     broadcastGameState(tableId);
     bettingRound(tableId);
 }
+
 
 function handleBet(data, tableId) {
 const table = tables.get(tableId);
