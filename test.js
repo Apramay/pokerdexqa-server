@@ -509,15 +509,15 @@ function evaluateHand(cards) {
     const sortedHand = cards.slice().sort((a, b) => rankValues[b.rank] - rankValues[a.rank]);
     const ranks = sortedHand.map(card => card.rank);
     const suits = sortedHand.map(card => card.suit);
-    if (isRoyalFlush(sortedHand, ranks, suits)) return { handValue: 10, bestCards: sortedHand };
-    if (isStraightFlush(sortedHand, ranks, suits)) return { handValue: 9, bestCards: sortedHand };
-    if (isFourOfAKind(sortedHand, ranks)) return { handValue: 8, bestCards: sortedHand };
-    if (isFullHouse(sortedHand, ranks)) return { handValue: 7, bestCards: sortedHand };
-    if (isFlush(sortedHand, suits)) return { handValue: 6, bestCards: sortedHand };
-    if (isStraight(sortedHand, ranks)) return { handValue: 5, bestCards: sortedHand };
-    if (isThreeOfAKind(sortedHand, ranks)) return { handValue: 4, bestCards: sortedHand };
-    if (isTwoPair(sortedHand, ranks)) return { handValue: 3, bestCards: sortedHand };
-    if (isOnePair(sortedHand, ranks)) return { handValue: 2, bestCards: sortedHand };
+    if (isRoyalFlush(sortedHand, ranks, suits)) return { handValue: 10, bestCards: sortedHand, handType: "Royal Flush" };
+    if (isStraightFlush(sortedHand, ranks, suits)) return { handValue: 9, bestCards: sortedHand, handType: "Straight Flush" };
+    if (isFourOfAKind(sortedHand, ranks)) return { handValue: 8, bestCards: sortedHand, handType: "Four of a Kind" };
+    if (isFullHouse(sortedHand, ranks)) return { handValue: 7, bestCards: sortedHand, handType: "Full House" };
+    if (isFlush(sortedHand, suits)) return { handValue: 6, bestCards: sortedHand, handType: "Flush" };
+    if (isStraight(sortedHand, ranks)) return { handValue: 5, bestCards: sortedHand, handType: "Straight" };
+    if (isThreeOfAKind(sortedHand, ranks)) return { handValue: 4, bestCards: sortedHand, handType: "Three of a Kind" };
+    if (isTwoPair(sortedHand, ranks).result) return { handValue: 3, bestCards: sortedHand, handType: "Two Pair" };
+    if (isOnePair(sortedHand, ranks)) return { handValue: 2, bestCards: sortedHand, handType: "One Pair" };
     return { handValue: 1, bestCards: sortedHand.slice(0, 5), handType: "High Card" };
     // High card
 }
