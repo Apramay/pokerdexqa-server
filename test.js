@@ -251,7 +251,7 @@ function isBettingRoundOver(tableId) {
         const matchedBet = player.currentBet === table.currentBet || table.currentBet === 0;
         console.log(`  - ${player.name} => Acted: ${acted}, MatchedBet: ${matchedBet}`);
         return acted && matchedBet;
-    );
+    });
     console.log(" ✅  Betting round over:", allCalledOrChecked);
     return allCalledOrChecked;
 }
