@@ -227,22 +227,23 @@ function isBettingRoundOver(tableId) {
     const table = tables.get(tableId);
     if (!table) return true;
 
-    console.log(" 📊  Checking if betting round is over...");
+    console.log("  📊   Checking if betting round is over...");
     console.log("playersWhoActed:", [...table.playersWhoActed]);
     console.log("Current Bet:", table.currentBet);
     console.log("Active Players:", table.players.filter(p => p.status === "active").map(p => p.name));
 
-    let activePlayers = table.players.filter(p => p.status === "active" && !p.allIn && p.tokens > 0);
+    let activePlayers = table.players.filter(p => p.status === "active");
+    let playersStillToAct = activePlayers.filter(player => {
+        // If the player is not all-in, they need to have matched the current bet
+        if (!player.allIn) {
+            return !table.playersWhoActed.has(player.name) || player.currentBet < table.currentBet;
+        }
+        // If the player is all-in, they have "acted"
+        return false;
+    });
 
-    if (activePlayers.length <= 1) return true;
-
-    const allCalledOrChecked = activePlayers.every(player =>
-        table.playersWhoActed.has(player.name) &&
-        (player.currentBet === table.currentBet || table.currentBet === 0)
-    );
-
-    console.log(" ✅  Betting round over:", allCalledOrChecked);
-    return allCalledOrChecked;
+    console.log("  ✅   Betting round over:", playersStillToAct.length === 0);
+    return playersStillToAct.length === 0;
 }
 
 function bigBlindCheckRaiseOption(tableId) {
