@@ -190,27 +190,39 @@ function bettingRound(tableId) {
     if (!table) return;
 
     console.log("Starting betting round..."); 
-    let activePlayers = table.players.filter(p => p.status === "active" && !p.allIn && p.tokens > 0);
-    if (activePlayers.length <= 1) {
-        console.log("Betting round over, moving to next round.");
+
+    // ✅ Include all-in players in the current round
+    let activePlayers = table.players.filter(p => p.status === "active");
+    let nonAllInPlayers = table.players.filter(p => p.status === "active" && !p.allIn && p.tokens > 0);
+
+    if (nonAllInPlayers.length === 0 && activePlayers.length > 1) {
+        console.log("⚠️ Only all-in players remain. Betting round continues without them acting.");
+    } else if (nonAllInPlayers.length <= 1) {
+        console.log("✅ Betting round over, moving to next round.");
         setTimeout(nextRound, 1000, tableId);
         return;
     }
+
     if (isBettingRoundOver(tableId)) {
-        console.log("All players have acted. Betting round is over.");
+        console.log("✅ All players have acted. Betting round is over.");
         setTimeout(nextRound, 1000, tableId);
         return;
     }
+
     const player = table.players[table.currentPlayerIndex];
+
     if (table.playersWhoActed.has(player.name) && player.currentBet === table.currentBet) {
         console.log(`${player.name} has already acted. Skipping...`);
         table.currentPlayerIndex = getNextPlayerIndex(table.currentPlayerIndex, tableId);
         bettingRound(tableId);
         return;
     }
+
     console.log(`Waiting for player ${player.name} to act...`);
     broadcast({ type: "playerTurn", playerName: player.name, tableId: tableId }, tableId);
 }
+
+
 function isBettingRoundOver(tableId) {
     const table = tables.get(tableId);
     if (!table) return true;
@@ -219,21 +231,15 @@ function isBettingRoundOver(tableId) {
     console.log("playersWhoActed:", [...table.playersWhoActed]);
     console.log("Current Bet:", table.currentBet);
     console.log("Active Players:", table.players.filter(p => p.status === "active").map(p => p.name));
+    let activePlayers = table.players.filter(p => p.status === "active" && !p.allIn && p.tokens > 0);
 
-    let activePlayers = table.players.filter(p => p.status === "active" && p.tokens > 0);
-    let allInPlayers = table.players.filter(p => p.status === "active" && p.allIn);
-
-    // ✅ Fix: The round should continue if there are multiple all-in players involved
-    if (activePlayers.length === 1 && allInPlayers.length === 0) {
-        console.log(" 🛑 Betting round ended early because only one player with tokens remains.");
-        return true;
-    }
-
-    // ✅ Ensure all non-all-in players have acted or matched the highest bet
-    const allCalledOrChecked = table.players
-        .filter(p => p.status === "active")
-        .every(player => table.playersWhoActed.has(player.name) && (player.currentBet === table.currentBet || table.currentBet === 0));
-
+    if (activePlayers.length <= 1) return true;
+    //  ✅  Only one player left, round ends immediately
+    //  ✅  Ensure all active players have either checked or matched the current bet
+    const allCalledOrChecked = activePlayers.every(player =>
+        table.playersWhoActed.has(player.name) &&
+        (player.currentBet === table.currentBet || table.currentBet === 0)
+    );
     console.log(" ✅  Betting round over:", allCalledOrChecked);
     return allCalledOrChecked;
 }
