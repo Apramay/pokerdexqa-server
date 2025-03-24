@@ -193,7 +193,7 @@ function bettingRound(tableId) {
 
     // ✅ Include all-in players in the current round
     let activePlayers = table.players.filter(p => p.status === "active");
-    let nonAllInPlayers = table.players.filter(p => p.status === "active" && !p.allIn && p.tokens > 0);
+let nonAllInPlayers = table.players.filter(p => p.status === "active" && (!p.allIn || p.currentBet < table.currentBet));
 
     if (nonAllInPlayers.length === 0 && activePlayers.length > 1) {
         console.log("⚠️ Only all-in players remain. Betting round continues without them acting.");
@@ -236,10 +236,11 @@ function isBettingRoundOver(tableId) {
     if (activePlayers.length <= 1) return true;
     //  ✅  Only one player left, round ends immediately
     //  ✅  Ensure all active players have either checked or matched the current bet
-    const allCalledOrChecked = activePlayers.every(player =>
-        table.playersWhoActed.has(player.name) &&
-        (player.currentBet === table.currentBet || table.currentBet === 0)
-    );
+    const allCalledOrChecked = table.players.every(player =>
+    player.status !== "folded" &&
+    (player.allIn || (table.playersWhoActed.has(player.name) && player.currentBet === table.currentBet))
+);
+
     console.log(" ✅  Betting round over:", allCalledOrChecked);
     return allCalledOrChecked;
 }
@@ -743,6 +744,13 @@ function handleRaise(data, tableId) {
 
     table.playersWhoActed.clear(); // ✅ Reset all players except raiser
     table.playersWhoActed.add(player.name);
+    console.log("After updating playersWhoActed:", [...playersWhoActed]);
+    broadcast({
+        type: "updateActionHistory",
+        action: `${data.playerName} raises ${raiseAmount}`
+    }, tableId);
+    broadcast({ type: "raise", playerName: data.playerName, amount: raiseAmount, tableId: tableId
+ }, tableId);
 
     table.currentPlayerIndex = getNextPlayerIndex(table.currentPlayerIndex, tableId);
     broadcastGameState(tableId);
