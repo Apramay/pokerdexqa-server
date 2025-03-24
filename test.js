@@ -748,7 +748,7 @@ function handleRaise(data, tableId) {
         type: "updateActionHistory",
         action: `${data.playerName} raise ${raiseAmount}`
     }, tableId);
-    broadcast({ type: "raise", playerName: data.playerName, amount: RaiseAmount, tableId: tableId
+    broadcast({ type: "raise", playerName: data.playerName, amount: raiseAmount, tableId: tableId
  }, tableId);
 
     table.currentPlayerIndex = getNextPlayerIndex(table.currentPlayerIndex, tableId);
