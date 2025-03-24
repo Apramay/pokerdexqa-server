@@ -99,17 +99,22 @@ function startNewHand(tableId) {
     table.round = 0;
     // Reset to preflop
     // Move the dealer button
+    let activePlayers = table.players.filter(p => p.tokens > 0);
+    if (activePlayers.length === 0) {
+        console.log(" ⚠️ No active players left! Game cannot continue.");
+        return;
+    }
     table.dealerIndex = (table.dealerIndex + 1) % table.players.length;
     // Determine small blind and big blind indices
     let smallBlindIndex = (table.dealerIndex + 1) % table.players.length;
     let bigBlindIndex = (table.dealerIndex + 2) % table.players.length;
     // Reset player states and deal cards
     table.players.forEach((player, index) => {
-        player.hand = dealHand(table.deckForGame, 2);
+        player.hand = player.tokens > 0 ? dealHand(table.deckForGame, 2) : [];
         player.currentBet = 0;
-        player.status = "active"; // Reset player status
-        player.isSmallBlind = index === smallBlindIndex;
-        player.isBigBlind = index === bigBlindIndex;
+        player.status = player.tokens > 0 ? "active" : "inactive";
+        player.isSmallBlind = (activePlayers[smallBlindIndex] && player.name === activePlayers[smallBlindIndex].name);
+        player.isBigBlind = (activePlayers[bigBlindIndex] && player.name === activePlayers[bigBlindIndex].name);
         player.tokens -= player.isSmallBlind ? table.smallBlindAmount : player.isBigBlind ? table.bigBlindAmount : 0;
 
         table.pot += player.isSmallBlind ? table.smallBlindAmount : player.isBigBlind ? table.bigBlindAmount : 0;
@@ -121,6 +126,7 @@ function startNewHand(tableId) {
     // Broadcast the updated game state
     broadcastGameState(tableId);
 }
+
 function setupBlinds(tableId) {
     const table = tables.get(tableId);
     if (!table) return;
