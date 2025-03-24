@@ -192,18 +192,16 @@ function bettingRound(tableId) {
     console.log("Starting betting round..."); 
 
     // ✅ Include all-in players in the current round
-let activePlayers = table.players.filter(p => p.status === "active");
-let nonAllInPlayers = table.players.filter(p => p.status === "active" && !p.allIn && p.tokens > 0);
+    let activePlayers = table.players.filter(p => p.status === "active");
+    let nonAllInPlayers = table.players.filter(p => p.status === "active" && !p.allIn && p.tokens > 0);
 
-// If all remaining players are all-in, move to the next round.
-if (nonAllInPlayers.length === 0 && activePlayers.length > 1) {
-    console.log("⚠️ Only all-in players remain. Betting round continues without them acting.");
-} else if (nonAllInPlayers.length <= 1) {
-    console.log("✅ Betting round over, moving to next round.");
-    setTimeout(nextRound, 1000, tableId);
-    return;
-}
-
+    if (nonAllInPlayers.length === 0 && activePlayers.length > 1) {
+        console.log("⚠️ Only all-in players remain. Betting round continues without them acting.");
+    } else if (nonAllInPlayers.length <= 1) {
+        console.log("✅ Betting round over, moving to next round.");
+        setTimeout(nextRound, 1000, tableId);
+        return;
+    }
 
     if (isBettingRoundOver(tableId)) {
         console.log("✅ All players have acted. Betting round is over.");
@@ -233,15 +231,17 @@ function isBettingRoundOver(tableId) {
     console.log("playersWhoActed:", [...table.playersWhoActed]);
     console.log("Current Bet:", table.currentBet);
     console.log("Active Players:", table.players.filter(p => p.status === "active").map(p => p.name));
-let activePlayers = table.players.filter(p => p.status === "active");
 
+    // Filter out all-in players
+    let activePlayers = table.players.filter(p => p.status === "active" && !p.allIn && p.tokens > 0);
+
+    // If only 1 player or less is active after filtering all-ins, round is over
     if (activePlayers.length <= 1) return true;
-    //  ✅  Only one player left, round ends immediately
-    //  ✅  Ensure all active players have either checked or matched the current bet
-    const allCalledOrChecked = activePlayers.every(player =>
-    player.allIn || (table.playersWhoActed.has(player.name) && player.currentBet === table.currentBet)
-);
 
+    const allCalledOrChecked = activePlayers.every(player =>
+        table.playersWhoActed.has(player.name) &&
+        (player.currentBet === table.currentBet || table.currentBet === 0)
+    );
 
     console.log(" ✅  Betting round over:", allCalledOrChecked);
     return allCalledOrChecked;
