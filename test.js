@@ -227,23 +227,21 @@ function isBettingRoundOver(tableId) {
     const table = tables.get(tableId);
     if (!table) return true;
 
-    console.log("  📊   Checking if betting round is over...");
+    console.log(" 📊  Checking if betting round is over...");
     console.log("playersWhoActed:", [...table.playersWhoActed]);
     console.log("Current Bet:", table.currentBet);
     console.log("Active Players:", table.players.filter(p => p.status === "active").map(p => p.name));
+    let activePlayers = table.players.filter(p => p.status === "active" && !p.allIn && p.tokens > 0);
 
-    let activePlayers = table.players.filter(p => p.status === "active");
-    let playersStillToAct = activePlayers.filter(player => {
-        // If the player is not all-in, they need to have matched the current bet
-        if (!player.allIn) {
-            return !table.playersWhoActed.has(player.name) || player.currentBet < table.currentBet;
-        }
-        // If the player is all-in, they have "acted"
-        return false;
-    });
-
-    console.log("  ✅   Betting round over:", playersStillToAct.length === 0);
-    return playersStillToAct.length === 0;
+    if (activePlayers.length <= 1) return true;
+    //  ✅  Only one player left, round ends immediately
+    //  ✅  Ensure all active players have either checked or matched the current bet
+    const allCalledOrChecked = activePlayers.every(player =>
+        table.playersWhoActed.has(player.name) &&
+        (player.currentBet === table.currentBet || table.currentBet === 0)
+    );
+    console.log(" ✅  Betting round over:", allCalledOrChecked);
+    return allCalledOrChecked;
 }
 
 function bigBlindCheckRaiseOption(tableId) {
@@ -730,70 +728,67 @@ wss.on('connection', function connection(ws) {
 function handleRaise(data, tableId) {
     const table = tables.get(tableId);
     if (!table) return;
-
+    
     const player = table.players.find(p => p.name === data.playerName);
     if (!player) return;
-
+    
     const raiseAmount = parseInt(data.amount);
     if (raiseAmount > player.tokens || raiseAmount <= table.currentBet) return;
+
     const totalBet = raiseAmount;
     player.tokens -= (totalBet - player.currentBet);
     table.pot += (totalBet - player.currentBet);
     player.currentBet = totalBet;
     table.currentBet = totalBet;
-    //  ✅  Reset all players except raiser - This is incorrect
-    // table.playersWhoActed.clear();
-    table.playersWhoActed.add(player.name);  // ✅  Correct: Add the player
-    console.log("After updating playersWhoActed:", [...table.playersWhoActed]);
-    broadcast({
-        type: "updateActionHistory",
-        action: `${data.playerName} raises ${raiseAmount}`
-    }, tableId);
-    broadcast({ type: "raise", playerName: data.playerName, amount: raiseAmount, tableId: tableId }, tableId);
+
+    table.playersWhoActed.clear(); // ✅ Reset all players except raiser
+    table.playersWhoActed.add(player.name);
+
     table.currentPlayerIndex = getNextPlayerIndex(table.currentPlayerIndex, tableId);
     broadcastGameState(tableId);
     bettingRound(tableId);
 }
 
 function handleBet(data, tableId) {
-    const table = tables.get(tableId);
-    if (!table) return;
-    console.log(`  🔄   ${data.playerName} performed action: ${data.type}`);
-    console.log("Before updating playersWhoActed:", [...table.playersWhoActed]);
-    const player = table.players.find(p => p.name === data.playerName);
-    if (!player) {
-        console.error("Player not found:", data.playerName);
-        return;
-    }
-    const betAmount = parseInt(data.amount);
-    if (betAmount <= player.tokens && betAmount > table.currentBet) {
-        player.tokens -= betAmount;
-        table.pot += betAmount;
-        table.currentBet = betAmount;
-        player.currentBet = betAmount;
-        if (player.tokens === 0) {
-            player.allIn = true;
-        }
-        table.playersWhoActed.add(player.name);
-        console.log("After updating playersWhoActed:", [...table.playersWhoActed]);
-        broadcast({
-            type: "updateActionHistory",
-            action: `${data.playerName} bet ${betAmount}`
-        }, tableId);
-        broadcast({ type: "bet", playerName: data.playerName, amount: betAmount, tableId: tableId }, tableId);
-        //   ✅   After a bet, all need to act again - This is incorrect
-        // table.players.forEach(p => {
-        //     if (p.name !== player.name) {
-        //         table.playersWhoActed.delete(p.name);
-        //     }
-        // });
-        console.log("After updating playersWhoActed:", [...table.playersWhoActed]);
-        table.currentPlayerIndex = getNextPlayerIndex(table.currentPlayerIndex, tableId);
-        broadcastGameState(tableId);  //   ✅   Only update the UI once
-        bettingRound(tableId);
-    }
-}
+const table = tables.get(tableId);
+if (!table) return;
 
+console.log(` 🔄  ${data.playerName} performed action: ${data.type}`);
+console.log("Before updating playersWhoActed:", [...table.playersWhoActed]);
+const player = table.players.find(p => p.name === data.playerName);
+if (!player) {
+    console.error("Player not found:", data.playerName);
+    return;
+}
+const betAmount = parseInt(data.amount);
+if (betAmount <= player.tokens && betAmount > table.currentBet) {
+    player.tokens -= betAmount;
+    table.pot += betAmount;
+    table.currentBet = betAmount;
+    player.currentBet = betAmount;
+    if (player.tokens === 0) {
+        player.allIn = true;
+    }
+    table.playersWhoActed.add(player.name);
+    console.log("After updating playersWhoActed:", [...playersWhoActed]);
+    broadcast({
+        type: "updateActionHistory",
+        action: `${data.playerName} bet ${betAmount}`
+    }, tableId);
+    broadcast({ type: "bet", playerName: data.playerName, amount: betAmount, tableId: tableId
+ }, tableId);
+    //  ✅  After a bet, all need to act again
+    table.players.forEach(p => {
+        if (p.name !== player.name) {
+            table.playersWhoActed.delete(p.name);
+        }
+    });
+    console.log("After updating playersWhoActed:", [...table.playersWhoActed]);
+    table.currentPlayerIndex = getNextPlayerIndex(table.currentPlayerIndex, tableId);
+    broadcastGameState(tableId);  //  ✅  Only update the UI once
+    bettingRound(tableId);
+}
+}
 function handleCall(data, tableId) {
 const table = tables.get(tableId);
 if (!table) return;
