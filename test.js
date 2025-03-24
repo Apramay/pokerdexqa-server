@@ -219,13 +219,13 @@ function bettingRound(tableId) {
     }
 
     const player = table.players[table.currentPlayerIndex];
-
-    if (table.playersWhoActed.has(player.name) && player.currentBet === table.currentBet) {
+if (table.playersWhoActed.has(player.name)) {
         console.log(`${player.name} has already acted. Skipping...`);
-        table.currentPlayerIndex = getNextPlayerIndex(table.currentPlayerIndex, tableId);
-        bettingRound(tableId);
-        return;
-    }
+    table.currentPlayerIndex = getNextPlayerIndex(table.currentPlayerIndex, tableId);
+    bettingRound(tableId);
+    return;
+}
+    
 
     console.log(`Waiting for player ${player.name} to act...`);
     broadcast({ type: "playerTurn", playerName: player.name, tableId: tableId }, tableId);
