@@ -729,29 +729,26 @@ wss.on('connection', function connection(ws) {
 function handleRaise(data, tableId) {
     const table = tables.get(tableId);
     if (!table) return;
-    
+
     const player = table.players.find(p => p.name === data.playerName);
     if (!player) return;
-    
+
     const raiseAmount = parseInt(data.amount);
     if (raiseAmount > player.tokens || raiseAmount <= table.currentBet) return;
-
     const totalBet = raiseAmount;
     player.tokens -= (totalBet - player.currentBet);
     table.pot += (totalBet - player.currentBet);
     player.currentBet = totalBet;
     table.currentBet = totalBet;
-
-    table.playersWhoActed.clear(); // ✅ Reset all players except raiser
-    table.playersWhoActed.add(player.name);
-    console.log("After updating playersWhoActed:", [...playersWhoActed]);
+    //  ✅  Reset all players except raiser - This is incorrect
+    // table.playersWhoActed.clear();
+    table.playersWhoActed.add(player.name);  // ✅  Correct: Add the player
+    console.log("After updating playersWhoActed:", [...table.playersWhoActed]);
     broadcast({
         type: "updateActionHistory",
         action: `${data.playerName} raises ${raiseAmount}`
     }, tableId);
-    broadcast({ type: "raise", playerName: data.playerName, amount: raiseAmount, tableId: tableId
- }, tableId);
-
+    broadcast({ type: "raise", playerName: data.playerName, amount: raiseAmount, tableId: tableId }, tableId);
     table.currentPlayerIndex = getNextPlayerIndex(table.currentPlayerIndex, tableId);
     broadcastGameState(tableId);
     bettingRound(tableId);
