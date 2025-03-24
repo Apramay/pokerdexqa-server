@@ -241,13 +241,16 @@ function isBettingRoundOver(tableId) {
     console.log("Current Bet:", table.currentBet);
     console.log("Active Players:", table.players.filter(p => p.status === "active").map(p => p.name));
     let activePlayers = table.players.filter(p => p.status === "active" && !p.allIn && p.tokens > 0);
+        console.log("Active Players (non-all-in):", activePlayers.map(p => p.name));
 
-    if (activePlayers.length <= 1) return true;
+
     //  ✅  Only one player left, round ends immediately
     //  ✅  Ensure all active players have either checked or matched the current bet
-    const allCalledOrChecked = activePlayers.every(player =>
-        table.playersWhoActed.has(player.name) &&
-        (player.currentBet === table.currentBet || table.currentBet === 0)
+    const allCalledOrChecked = activePlayers.every(player => {
+        const acted = table.playersWhoActed.has(player.name);
+        const matchedBet = player.currentBet === table.currentBet || table.currentBet === 0;
+        console.log(`  - ${player.name} => Acted: ${acted}, MatchedBet: ${matchedBet}`);
+        return acted && matchedBet;
     );
     console.log(" ✅  Betting round over:", allCalledOrChecked);
     return allCalledOrChecked;
