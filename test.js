@@ -743,6 +743,13 @@ function handleRaise(data, tableId) {
 
     table.playersWhoActed.clear(); // ✅ Reset all players except raiser
     table.playersWhoActed.add(player.name);
+     console.log("After updating playersWhoActed:", [...playersWhoActed]);
+    broadcast({
+        type: "updateActionHistory",
+        action: `${data.playerName} raise ${betAmount}`
+    }, tableId);
+    broadcast({ type: "raise", playerName: data.playerName, amount: RaiseAmount, tableId: tableId
+ }, tableId);
 
     table.currentPlayerIndex = getNextPlayerIndex(table.currentPlayerIndex, tableId);
     broadcastGameState(tableId);
