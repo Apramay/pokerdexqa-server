@@ -197,11 +197,20 @@ function bettingRound(tableId) {
 
     if (nonAllInPlayers.length === 0 && activePlayers.length > 1) {
         console.log("⚠️ Only all-in players remain. Betting round continues without them acting.");
-    } else if (nonAllInPlayers.length <= 1) {
-        console.log("✅ Betting round over, moving to next round.");
-        setTimeout(nextRound, 1000, tableId);
-        return;
-    }
+    } elseelse if (nonAllInPlayers.length === 0) {
+    console.log("✅ No players left with chips. Skipping to next round.");
+    setTimeout(nextRound, 1000, tableId);
+    return;
+} else if (
+    nonAllInPlayers.length === 1 &&
+    table.playersWhoActed.has(nonAllInPlayers[0].name) &&
+    nonAllInPlayers[0].currentBet === table.currentBet
+) {
+    console.log("✅ Only one non-all-in player and they’ve acted. Moving to next round.");
+    setTimeout(nextRound, 1000, tableId);
+    return;
+}
+    
 
     if (isBettingRoundOver(tableId)) {
         console.log("✅ All players have acted. Betting round is over.");
