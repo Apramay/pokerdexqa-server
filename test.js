@@ -820,6 +820,12 @@ broadcast({
     action: `${data.playerName} folded`
 }, tableId);
 broadcast({ type: "fold", playerName: data.playerName , tableId: tableId }, tableId);
+    let activePlayers = table.players.filter(p => p.status === "active");
+    if (activePlayers.length === 1) {
+        console.log(` 🏆  Only one player remains: ${activePlayers[0].name}. Going to showdown.`);
+        showdown(tableId);
+        return;
+    }
 table.currentPlayerIndex = getNextPlayerIndex(table.currentPlayerIndex, tableId);
 if (table.currentPlayerIndex !== -1) {
     bettingRound(tableId);
