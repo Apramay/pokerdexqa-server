@@ -755,45 +755,44 @@ function handleRaise(data, tableId) {
 }
 
 function handleBet(data, tableId) {
-const table = tables.get(tableId);
-if (!table) return;
-
-console.log(` 🔄  ${data.playerName} performed action: ${data.type}`);
-console.log("Before updating playersWhoActed:", [...table.playersWhoActed]);
-const player = table.players.find(p => p.name === data.playerName);
-if (!player) {
-    console.error("Player not found:", data.playerName);
-    return;
-}
-const betAmount = parseInt(data.amount);
-if (betAmount <= player.tokens && betAmount > table.currentBet) {
-    player.tokens -= betAmount;
-    table.pot += betAmount;
-    table.currentBet = betAmount;
-    player.currentBet = betAmount;
-    if (player.tokens === 0) {
-        player.allIn = true;
+    const table = tables.get(tableId);
+    if (!table) return;
+    console.log(`  🔄   ${data.playerName} performed action: ${data.type}`);
+    console.log("Before updating playersWhoActed:", [...table.playersWhoActed]);
+    const player = table.players.find(p => p.name === data.playerName);
+    if (!player) {
+        console.error("Player not found:", data.playerName);
+        return;
     }
-    table.playersWhoActed.add(player.name);
-    console.log("After updating playersWhoActed:", [...playersWhoActed]);
-    broadcast({
-        type: "updateActionHistory",
-        action: `${data.playerName} bet ${betAmount}`
-    }, tableId);
-    broadcast({ type: "bet", playerName: data.playerName, amount: betAmount, tableId: tableId
- }, tableId);
-    //  ✅  After a bet, all need to act again
-    table.players.forEach(p => {
-        if (p.name !== player.name) {
-            table.playersWhoActed.delete(p.name);
+    const betAmount = parseInt(data.amount);
+    if (betAmount <= player.tokens && betAmount > table.currentBet) {
+        player.tokens -= betAmount;
+        table.pot += betAmount;
+        table.currentBet = betAmount;
+        player.currentBet = betAmount;
+        if (player.tokens === 0) {
+            player.allIn = true;
         }
-    });
-    console.log("After updating playersWhoActed:", [...table.playersWhoActed]);
-    table.currentPlayerIndex = getNextPlayerIndex(table.currentPlayerIndex, tableId);
-    broadcastGameState(tableId);  //  ✅  Only update the UI once
-    bettingRound(tableId);
+        table.playersWhoActed.add(player.name);
+        console.log("After updating playersWhoActed:", [...table.playersWhoActed]);
+        broadcast({
+            type: "updateActionHistory",
+            action: `${data.playerName} bet ${betAmount}`
+        }, tableId);
+        broadcast({ type: "bet", playerName: data.playerName, amount: betAmount, tableId: tableId }, tableId);
+        //   ✅   After a bet, all need to act again - This is incorrect
+        // table.players.forEach(p => {
+        //     if (p.name !== player.name) {
+        //         table.playersWhoActed.delete(p.name);
+        //     }
+        // });
+        console.log("After updating playersWhoActed:", [...table.playersWhoActed]);
+        table.currentPlayerIndex = getNextPlayerIndex(table.currentPlayerIndex, tableId);
+        broadcastGameState(tableId);  //   ✅   Only update the UI once
+        bettingRound(tableId);
+    }
 }
-}
+
 function handleCall(data, tableId) {
 const table = tables.get(tableId);
 if (!table) return;
