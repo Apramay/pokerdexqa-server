@@ -434,14 +434,26 @@ function resetGame(tableId) {
     table.round = 0;
     table.tableCards = [];
     table.pot = 0;
-    //  ✅  Move the dealer button to the next active player
-    table.dealerIndex = (table.dealerIndex + 1) % table.players.length;
+    let activePlayers = table.players.filter(p => p.tokens > 0); 
+    if (activePlayers.length > 0) {
+        table.dealerIndex = (table.dealerIndex + 1) % activePlayers.length;
+        console.log(` 🎲  New dealer is: ${activePlayers[table.dealerIndex].name}`);
+    } else {
+        console.log(" ⚠️ No active players left! Game cannot continue.");
+        return;
+    }
     //  ✅  Reset all players for a new round
     table.players.forEach(player => {
         player.hand = [] ;
         player.currentBet = 0;
-        player.status = "active";
         player.allIn = false;
+                if (player.tokens > 0) {
+            player.status = "active"; // ✅ Can still play
+        } else {
+            player.status = "inactive"; // ✅ Out of chips, cannot play but stays at the table
+            console.log(` ❌ ${player.name} is out of chips and inactive.`);
+        }
+
     });
     console.log(` 🎲  New dealer is: ${table.players[table.dealerIndex].name}`);
     startNewHand(tableId); //  ✅  Start the new round with correct dealer
