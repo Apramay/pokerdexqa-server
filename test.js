@@ -752,7 +752,7 @@ function handleRaise(data, tableId) {
 
     table.playersWhoActed.clear(); // ✅ Reset all players except raiser
     table.playersWhoActed.add(player.name);
-     console.log("After updating playersWhoActed:", [...playersWhoActed]);
+     console.log("After updating playersWhoActed:", [...table.playersWhoActed]);
     broadcast({
         type: "updateActionHistory",
         action: `${data.playerName} raise ${raiseAmount}`
@@ -786,7 +786,7 @@ if (betAmount <= player.tokens && betAmount > table.currentBet) {
         player.allIn = true;
     }
     table.playersWhoActed.add(player.name);
-    console.log("After updating playersWhoActed:", [...playersWhoActed]);
+    console.log("After updating playersWhoActed:", [...table.playersWhoActed]);
     broadcast({
         type: "updateActionHistory",
         action: `${data.playerName} bet ${betAmount}`
@@ -826,7 +826,7 @@ if (callAmount <= player.tokens) {
     }
     player.status = "active";
     table.playersWhoActed.add(player.name);
-    console.log("After updating playersWhoActed:", [...playersWhoActed]);
+    console.log("After updating playersWhoActed:", [...table.playersWhoActed]);
     broadcast({
         type: "updateActionHistory",
         action: `${data.playerName} called`
