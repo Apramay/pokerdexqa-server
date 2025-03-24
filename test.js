@@ -746,7 +746,7 @@ function handleRaise(data, tableId) {
      console.log("After updating playersWhoActed:", [...playersWhoActed]);
     broadcast({
         type: "updateActionHistory",
-        action: `${data.playerName} raise ${betAmount}`
+        action: `${data.playerName} raise ${raiseAmount}`
     }, tableId);
     broadcast({ type: "raise", playerName: data.playerName, amount: RaiseAmount, tableId: tableId
  }, tableId);
