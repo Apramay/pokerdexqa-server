@@ -219,18 +219,25 @@ function isBettingRoundOver(tableId) {
     console.log("playersWhoActed:", [...table.playersWhoActed]);
     console.log("Current Bet:", table.currentBet);
     console.log("Active Players:", table.players.filter(p => p.status === "active").map(p => p.name));
-    let activePlayers = table.players.filter(p => p.status === "active" && !p.allIn && p.tokens > 0);
 
-    if (activePlayers.length <= 1) return true;
-    //  ✅  Only one player left, round ends immediately
-    //  ✅  Ensure all active players have either checked or matched the current bet
-    const allCalledOrChecked = activePlayers.every(player =>
-        table.playersWhoActed.has(player.name) &&
-        (player.currentBet === table.currentBet || table.currentBet === 0)
-    );
+    let activePlayers = table.players.filter(p => p.status === "active" && p.tokens > 0);
+    let allInPlayers = table.players.filter(p => p.status === "active" && p.allIn);
+
+    // ✅ Fix: The round should continue if there are multiple all-in players involved
+    if (activePlayers.length === 1 && allInPlayers.length === 0) {
+        console.log(" 🛑 Betting round ended early because only one player with tokens remains.");
+        return true;
+    }
+
+    // ✅ Ensure all non-all-in players have acted or matched the highest bet
+    const allCalledOrChecked = table.players
+        .filter(p => p.status === "active")
+        .every(player => table.playersWhoActed.has(player.name) && (player.currentBet === table.currentBet || table.currentBet === 0));
+
     console.log(" ✅  Betting round over:", allCalledOrChecked);
     return allCalledOrChecked;
 }
+
 function bigBlindCheckRaiseOption(tableId) {
     const table = tables.get(tableId);
     if (!table) return;
