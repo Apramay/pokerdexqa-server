@@ -232,10 +232,8 @@ function isBettingRoundOver(tableId) {
     console.log("Current Bet:", table.currentBet);
     console.log("Active Players:", table.players.filter(p => p.status === "active").map(p => p.name));
 
-    // Filter out all-in players
     let activePlayers = table.players.filter(p => p.status === "active" && !p.allIn && p.tokens > 0);
 
-    // If only 1 player or less is active after filtering all-ins, round is over
     if (activePlayers.length <= 1) return true;
 
     const allCalledOrChecked = activePlayers.every(player =>
