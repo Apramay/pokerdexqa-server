@@ -197,7 +197,7 @@ function bettingRound(tableId) {
 
     if (nonAllInPlayers.length === 0 && activePlayers.length > 1) {
         console.log("⚠️ Only all-in players remain. Betting round continues without them acting.");
-    } elseelse if (nonAllInPlayers.length === 0) {
+    } else if (nonAllInPlayers.length === 0) {
     console.log("✅ No players left with chips. Skipping to next round.");
     setTimeout(nextRound, 1000, tableId);
     return;
