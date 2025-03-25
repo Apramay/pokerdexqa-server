@@ -209,8 +209,7 @@ function bettingRound(tableId) {
     return;
 } else if (
     nonAllInPlayers.length === 1 &&
-    table.playersWhoActed.has(nonAllInPlayers[0].name) &&
-    nonAllInPlayers[0].currentBet === table.currentBet
+    table.playersWhoActed.has(nonAllInPlayers[0].name) 
 ) {
     console.log("✅ Only one non-all-in player and they’ve acted. Moving to next round.");
     setTimeout(nextRound, 1000, tableId);
