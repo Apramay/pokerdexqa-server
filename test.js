@@ -209,8 +209,7 @@ function bettingRound(tableId) {
     return;
 } else if (
     nonAllInPlayers.length === 1 &&
-    table.playersWhoActed.has(nonAllInPlayers[0].name) &&
-    nonAllInPlayers[0].currentBet === table.currentBet
+    table.playersWhoActed.has(nonAllInPlayers[0].name)
 ) {
     console.log("✅ Only one non-all-in player and they’ve acted. Moving to next round.");
     setTimeout(nextRound, 1000, tableId);
@@ -413,30 +412,31 @@ function distributePot(tableId) {
     if (!table) return;
 
     console.log("💰 Distributing the pot...");
-
     let activePlayers = table.players.filter(p => p.status === "active" || p.allIn);
-
-    // Sort players by their all-in amounts (for side pots)
     activePlayers.sort((a, b) => a.currentBet - b.currentBet);
 
     let totalPot = table.pot;
     let sidePots = [];
+    let remainingPot = totalPot;
+    let lastBet = 0;
 
-    while (activePlayers.length > 0) {
-        const minBet = activePlayers[0].currentBet;
-        let potPortion = 0;
-
-        activePlayers.forEach(player => {
-            potPortion += Math.min(minBet, player.currentBet);
-            player.currentBet -= Math.min(minBet, player.currentBet);
-        });
-
-        sidePots.push({ players: [...activePlayers], amount: potPortion });
-        activePlayers = activePlayers.filter(p => p.currentBet > 0);
+    // Create multiple side pots based on increasing all-in amounts
+    for (let i = 0; i < activePlayers.length; i++) {
+        let player = activePlayers[i];
+        let sidePotAmount = (player.currentBet - lastBet) * (activePlayers.length - i);
+        if (sidePotAmount > 0) {
+            sidePots.push({
+                amount: sidePotAmount,
+                eligiblePlayers: activePlayers.slice(i)
+            });
+            remainingPot -= sidePotAmount;
+        }
+        lastBet = player.currentBet;
     }
 
+    // Award side pots
     sidePots.forEach(sidePot => {
-        let winners = determineWinners(sidePot.players, table);
+        let winners = determineWinners(sidePot.eligiblePlayers, table);
         let splitPot = Math.floor(sidePot.amount / winners.length);
         winners.forEach(winner => {
             winner.tokens += splitPot;
@@ -444,18 +444,18 @@ function distributePot(tableId) {
         });
     });
 
-    let remainingPot = totalPot - sidePots.reduce((acc, sp) => acc + sp.amount, 0);
-    if (remainingPot > 0) {
-        let mainWinners = determineWinners(table.players.filter(p => p.status === "active"), table);
-        let splitPot = Math.floor(remainingPot / mainWinners.length);
-        mainWinners.forEach(winner => {
-            winner.tokens += splitPot;
-            console.log(`🏆 ${winner.name} wins ${splitPot} from the main pot.`);
-        });
-    }
+    // Award main pot
+    let mainWinners = determineWinners(activePlayers, table);
+    let splitPot = Math.floor(remainingPot / mainWinners.length);
+    mainWinners.forEach(winner => {
+        winner.tokens += splitPot;
+        console.log(`🏆 ${winner.name} wins ${splitPot} from the main pot.`);
+    });
 
-    table.pot = 0; // Reset the pot after distribution
+    table.pot = 0;
+    table.sidePots = [];
 }
+
 
 function resetGame(tableId) {
     const table = tables.get(tableId);
@@ -682,10 +682,16 @@ wss.on('connection', function connection(ws) {
             }
             //  ✅  Handle other game actions separately
             if (data.type === 'join') {
+                const tokenAmount = data.tokens; // Use selected token amount
+
+    if (!tokenAmount || tokenAmount <= 0) {
+        console.warn(`❌ Invalid token amount for ${data.name}`);
+        return;
+    }
                 const player = {
                     name: data.name,
                     ws: ws,
-                    tokens: 1000,
+                    tokens: tokenAmount,
                     hand: [],
                     currentBet: 0,
                     status: 'active',
@@ -711,7 +717,7 @@ wss.on('connection', function connection(ws) {
                     tables.set(tableId, table);
                 }
                 table.players.push(player);
-                console.log(` ➕  Player ${data.name} joined. Total players: ${table.players.length}`);
+                console.log(` ➕  Player ${data.name} with ${tokenAmount} tokens . Total players: ${table.players.length}`);
                 broadcast({ type: 'updatePlayers', players: table.players.map(({ ws, ...player }) => player) , tableId: tableId }, tableId);
             } else if (data.type === 'startGame') {
                 startGame(data.tableId);
@@ -750,29 +756,46 @@ function handleRaise(data, tableId) {
     const player = table.players.find(p => p.name === data.playerName);
     if (!player) return;
     
-    const raiseAmount = parseInt(data.amount);
-    if (raiseAmount > player.tokens || raiseAmount <= table.currentBet) return;
-
-    const totalBet = raiseAmount;
-    player.tokens -= (totalBet - player.currentBet);
-    table.pot += (totalBet - player.currentBet);
+    let raiseAmount = parseInt(data.amount);
+    if (raiseAmount > player.tokens) raiseAmount = player.tokens; // All-in scenario
+    
+    const totalBet = player.currentBet + raiseAmount;
+    player.tokens -= raiseAmount;
+    table.pot += raiseAmount;
     player.currentBet = totalBet;
+    
+    if (player.tokens === 0) {
+        player.allIn = true;
+    }
+    
+    console.log(`${player.name} raises to ${totalBet}`);
+    
+    // Handle side pot creation
+    const maxEffectiveStack = Math.min(...table.players.map(p => p.currentBet));
+    table.sidePots = table.sidePots || [];
+    if (totalBet > maxEffectiveStack) {
+        console.log(`${player.name} raised beyond the effective stack, creating a side pot`);
+        table.sidePots.push({
+            amount: totalBet - maxEffectiveStack,
+            eligiblePlayers: table.players.filter(p => p.currentBet >= totalBet)
+        });
+    }
+    
     table.currentBet = totalBet;
-
-    table.playersWhoActed.clear(); // ✅ Reset all players except raiser
+    table.playersWhoActed.clear(); // Reset for new round
     table.playersWhoActed.add(player.name);
-     console.log("After updating playersWhoActed:", [...table.playersWhoActed]);
+    
     broadcast({
         type: "updateActionHistory",
-        action: `${data.playerName} raise ${raiseAmount}`
+        action: `${data.playerName} raised to ${totalBet}`
     }, tableId);
-    broadcast({ type: "raise", playerName: data.playerName, amount: raiseAmount, tableId: tableId
- }, tableId);
-
+    broadcast({ type: "raise", playerName: data.playerName, amount: totalBet, tableId: tableId }, tableId);
+    
     table.currentPlayerIndex = getNextPlayerIndex(table.currentPlayerIndex, tableId);
     broadcastGameState(tableId);
     bettingRound(tableId);
 }
+
 
 function handleBet(data, tableId) {
 const table = tables.get(tableId);
@@ -815,32 +838,69 @@ if (betAmount <= player.tokens && betAmount > table.currentBet) {
 }
 }
 function handleCall(data, tableId) {
-const table = tables.get(tableId);
-if (!table) return;
+    const table = tables.get(tableId);
+    if (!table) return;
 
-console.log(` 🔄  ${data.playerName} performed action: ${data.type}`);
-console.log("Before updating playersWhoActed:", [...table.playersWhoActed]);
-const player = table.players.find(p => p.name === data.playerName);
-if (!player) {
-    console.error("Player not found:", data.playerName);
-    return;
-}
-const callAmount = table.currentBet - player.currentBet;
-if (callAmount <= player.tokens) {
-    player.tokens -= callAmount;
-    table.pot += callAmount;
-    player.currentBet = table.currentBet;
-    if (player.tokens === 0) {
-        player.allIn = true;
+    console.log(` 🔄  ${data.playerName} performed action: ${data.type}`);
+    console.log("Before updating playersWhoActed:", [...table.playersWhoActed]);
+
+    const player = table.players.find(p => p.name === data.playerName);
+    if (!player) {
+        console.error("Player not found:", data.playerName);
+        return;
     }
-    player.status = "active";
+
+    const callAmount = table.currentBet - player.currentBet;
+    if (callAmount > player.tokens) {
+        // Player is calling all-in with less than the required amount
+        const allInAmount = player.tokens;
+        player.tokens = 0;
+        player.currentBet += allInAmount;
+        table.pot += allInAmount;
+        player.allIn = true;
+        
+        console.log(`${player.name} goes all-in for ${allInAmount}`);
+
+        // Adjust the bet to match the all-in call
+        if (allInAmount < callAmount) {
+            console.log(`${data.playerName} could not match ${table.currentBet}, adjusting side pot`);
+            table.sidePots = table.sidePots || [];
+            table.sidePots.push({
+                amount: callAmount - allInAmount,
+                eligiblePlayers: table.players.filter(p => p.currentBet >= callAmount)
+            });
+        }
+    } else {
+        player.tokens -= callAmount;
+        table.pot += callAmount;
+        player.currentBet = table.currentBet;
+    }
+
+    // Handle re-shove scenario
+    const remainingPlayers = table.players.filter(p => p.tokens > 0 && !p.allIn);
+    if (remainingPlayers.length === 1) {
+        // If only one player left, excess chips must be refunded to over-betting player
+        const maxEffectiveStack = Math.min(...table.players.map(p => p.currentBet));
+        table.players.forEach(p => {
+            if (p.currentBet > maxEffectiveStack) {
+                const excess = p.currentBet - maxEffectiveStack;
+                p.tokens += excess;
+                p.currentBet = maxEffectiveStack;
+                table.pot -= excess;
+                console.log(`${p.name} gets refunded ${excess} chips.`);
+            }
+        });
+    }
+
     table.playersWhoActed.add(player.name);
     console.log("After updating playersWhoActed:", [...table.playersWhoActed]);
+
     broadcast({
         type: "updateActionHistory",
-        action: `${data.playerName} called`
+        action: `${data.playerName} called ${Math.min(callAmount, player.tokens)}`
     }, tableId);
     broadcast({ type: "call", playerName: data.playerName, tableId: tableId }, tableId);
+
     table.currentPlayerIndex = getNextPlayerIndex(table.currentPlayerIndex, tableId);
     if (table.currentPlayerIndex !== -1) {
         bettingRound(tableId);
@@ -848,8 +908,7 @@ if (callAmount <= player.tokens) {
         console.log(" ✅  All players have acted. Moving to next round.");
         setTimeout(nextRound, 1000, tableId);
     }
-    broadcastGameState(tableId);  //  ✅  Only update the UI once
-}
+    broadcastGameState(tableId);
 }
 function handleFold(data, tableId) {
 const table = tables.get(tableId);
