@@ -640,6 +640,25 @@ wss.on('connection', function connection(ws) {
         console.log(' 📩  Received message from client:', message);
         try {
             const data = JSON.parse(message);
+
+            if (data.type === "cashout") {
+            let tableId = data.tableId;
+            let table = tables.get(tableId);
+            if (!table) return;
+
+            // Find and remove the player
+            table.players = table.players.filter(player => player.name !== data.playerName);
+            console.log(`❌ Player ${data.playerName} cashed out and left the table.`);
+
+            // Broadcast updated player list
+            broadcast({ type: "updatePlayers", players: table.players.map(({ ws, ...player }) => player), tableId: tableId }, tableId);
+
+            // If only one player remains, end the game
+            if (table.players.length === 1) {
+                console.log("🏆 Only one player remains, ending the game.");
+                showdown(tableId);
+            }
+        }
             //  ✅  Handle "Show or Hide" Decision
             if (data.type ===
                 "showHideDecision") {
@@ -680,6 +699,7 @@ wss.on('connection', function connection(ws) {
                     setTimeout(resetGame, 3000, ws.tableId);
                 }
             }
+            
             //  ✅  Handle other game actions separately
             if (data.type === 'join') {
                 const tokenAmount = data.tokens; // Use selected token amount
