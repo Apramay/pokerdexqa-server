@@ -3,7 +3,11 @@ const http = require("http");
 const WebSocket = require("ws");
 const cors = require("cors");
 const app = express();
-app.use(cors());
+app.use(cors({
+    origin: "https://apramay.github.io", // Allow frontend to communicate
+    methods: ["GET", "POST"],
+    allowedHeaders: ["Content-Type"]
+}));
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 const bodyParser = require("body-parser");
