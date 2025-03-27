@@ -73,7 +73,7 @@ function broadcastGameState(tableId) {
         }
     }); 
 }
-// Function to start the game
+
 function startGame(tableId) {
     const table = tables.get(tableId);
     if (!table || table.players.length < 2) {
@@ -86,7 +86,7 @@ function startGame(tableId) {
     broadcast({ type: "startGame" }, tableId);
     broadcastGameState(tableId); 
 }
-// Function to start a new hand
+// Function to start the game
 function startNewHand(tableId) {
     const table = tables.get(tableId);
     if (!table) return;
@@ -110,8 +110,18 @@ function startNewHand(tableId) {
     let bigBlindIndex = (table.dealerIndex + 2) % table.players.length;
     // Reset player states and deal cards
     table.players.forEach((player, index) => {
+if (player.name === "A") {
+    player.tokens = 500;
+        player.hand = [{ rank: "A", suit: "Hearts" }, { rank: "A", suit: "Spades" }];
+    } else if (player.name === "B") {
+    player.tokens = 700;
+        player.hand = [{ rank: "10", suit: "Clubs" }, { rank: "10", suit: "Diamonds" }];
+    } else if (player.name === "C") {
+    player.tokens = 1000;
+        player.hand = [{ rank: "K", suit: "Hearts" }, { rank: "Q", suit: "Spades" }];
+    } else {
         player.hand = player.tokens > 0 ? dealHand(table.deckForGame, 2) : [];
-        player.currentBet = 0;
+    }        player.currentBet = 0;
         player.status = player.tokens > 0 ? "active" : "inactive";
         player.isSmallBlind = (activePlayers[smallBlindIndex] && player.name === activePlayers[smallBlindIndex].name);
         player.isBigBlind = (activePlayers[bigBlindIndex] && player.name === activePlayers[bigBlindIndex].name);
@@ -332,30 +342,39 @@ function nextRound(tableId) {
     console.log(" 🆕  New round started. Reset playersWhoActed."); //  ✅  Debugging log
     if (table.round === 0) {
         table.round++; 
-        table.tableCards = dealHand(table.deckForGame, 3); // Flop
+        table.tableCards = manualFlop; // Set manual flop cards
+
         console.log("🃏 Flop dealt:", table.tableCards);
         broadcast({ type: "message", text: `Flop: ${JSON.stringify(table.tableCards)}`, tableId: tableId }, tableId);
     } else if (table.round === 1) {
         table.round++;
-        if (table.deckForGame.length > 0) {
-            table.tableCards.push(dealHand(table.deckForGame, 1)[0]);
+        table.tableCards.push(manualTurn); // Set manual turn card
             // Turn
             broadcast({ type: "message", text: `Turn: ${JSON.stringify(table.tableCards[3])}` , tableId: tableId }, tableId)
-        }
+        
     } else if (table.round === 2) {
         table.round++;
-        if (table.deckForGame.length > 0) {
-            table.tableCards.push(dealHand(table.deckForGame, 1)[0]);
+                table.tableCards.push(manualRiver); // Set manual river card
+
             // Turn
             broadcast({ type: "message", text: `River: ${JSON.stringify(table.tableCards[4])}` ,tableId: tableId }, tableId);
         }
-    } else if (table.round === 3) {
+    else if (table.round === 3) {
         showdown(tableId);
         return;
     }
     broadcastGameState(tableId);
     setTimeout(() => startFlopBetting(tableId), 1500);
 }
+const manualFlop = [
+    { suit: "Clubs", rank: "A" },
+    { suit: "Spades", rank: "7" },
+    { suit: "Clubs", rank: "2" }
+];
+
+const manualTurn = { suit: "Clubs", rank: "9" };
+const manualRiver = { suit: "Hearts", rank: "3" };
+
 function showdown(tableId) {
     const table = tables.get(tableId);
     if (!table) return;
@@ -412,49 +431,67 @@ function distributePot(tableId) {
     if (!table) return;
 
     console.log("💰 Distributing the pot...");
+
     let activePlayers = table.players.filter(p => p.status === "active" || p.allIn);
     activePlayers.sort((a, b) => a.currentBet - b.currentBet);
 
     let totalPot = table.pot;
-    let sidePots = [];
     let remainingPot = totalPot;
     let lastBet = 0;
+    let sidePots = [];
 
-    // Create multiple side pots based on increasing all-in amounts
+    // ✅ Step 1: Create side pots
     for (let i = 0; i < activePlayers.length; i++) {
         let player = activePlayers[i];
-        let sidePotAmount = (player.currentBet - lastBet) * (activePlayers.length - i);
+        let betAmount = player.currentBet - lastBet;
+        let sidePotAmount = betAmount * (activePlayers.length - i);
+
         if (sidePotAmount > 0) {
+            let amount = Math.min(sidePotAmount, remainingPot);
             sidePots.push({
-                amount: sidePotAmount,
-                eligiblePlayers: activePlayers.slice(i)
+                amount: amount,
+                eligiblePlayers: activePlayers.slice(i),
             });
-            remainingPot -= sidePotAmount;
+            remainingPot -= amount;
         }
         lastBet = player.currentBet;
     }
 
-    // Award side pots
+    // ✅ Step 2: Award side pots proportionally
     sidePots.forEach(sidePot => {
         let winners = determineWinners(sidePot.eligiblePlayers, table);
-        let splitPot = Math.floor(sidePot.amount / winners.length);
+
+        let splitAmount = Math.floor(sidePot.amount / winners.length); // Split evenly among winners
         winners.forEach(winner => {
-            winner.tokens += splitPot;
-            console.log(`🏆 ${winner.name} wins ${splitPot} from a side pot.`);
+            winner.tokens += splitAmount;
+            console.log(`🏆 ${winner.name} wins ${splitAmount} from a side pot.`);
         });
     });
 
-    // Award main pot
+    // ✅ Step 3: Distribute remaining main pot
     let mainWinners = determineWinners(activePlayers, table);
-    let splitPot = Math.floor(remainingPot / mainWinners.length);
+    let splitMainAmount = Math.floor(remainingPot / mainWinners.length);
+    
     mainWinners.forEach(winner => {
-        winner.tokens += splitPot;
-        console.log(`🏆 ${winner.name} wins ${splitPot} from the main pot.`);
+        winner.tokens += splitMainAmount;
+        console.log(`🏆 ${winner.name} wins ${splitMainAmount} from the main pot.`);
     });
 
+    // ✅ Step 4: Refund excess chips properly
+    table.players.forEach(player => {
+        let maxAllowedBet = Math.min(...table.players.map(p => p.currentBet));
+        if (player.currentBet > maxAllowedBet) {
+            let refund = player.currentBet - maxAllowedBet;
+            player.tokens += refund;
+            console.log(`💸 ${player.name} gets refunded ${refund} chips.`);
+        }
+    });
+
+    // ✅ Reset pot and side pots
     table.pot = 0;
     table.sidePots = [];
 }
+
 
 
 function resetGame(tableId) {
@@ -490,53 +527,181 @@ function resetGame(tableId) {
     startNewHand(tableId); //  ✅  Start the new round with correct dealer
 }
 function determineWinners(playerList, table) {
-    if (playerList.length === 0) {
-        return [];
-    }
+    if (playerList.length === 0) return [];
+
     let bestHandValue = -1;
     let winners = [];
-    let bestHandDetails = null;
-    // To store best hand details for tiebreakers
+    let bestHand = null;
+
     playerList.forEach(player => {
-        if (player.status !== "folded") {
-            const fullHand = player.hand.concat(table.tableCards);
-            const { handValue, bestCards } = evaluateHand(fullHand);
-            if (handValue > bestHandValue) {
-                bestHandValue = handValue;
+        if (player.status === "folded") return;
 
+        const fullHand = player.hand.concat(table.tableCards);
+        const { handValue, bestCards, kicker, handType } = evaluateHand(fullHand);
+
+        console.log(`Player ${player.name} evaluated hand:`);
+        console.log(`Full Hand: ${JSON.stringify(fullHand.map(card => card.rank + card.suit))}`);
+        console.log(`Hand Type: ${handType}`);
+        console.log(`Hand Value: ${handValue}`);
+        console.log(`Best Cards: ${JSON.stringify(bestCards.map(card => card.rank + card.suit))}`);
+        console.log(`Kicker: ${kicker}`);
+
+        const comparison = bestHand
+            ? compareHands(bestCards, bestHand)
+            : 1;
+
+        if (handValue > bestHandValue) {
+            winners = [player];
+            bestHandValue = handValue;
+            bestHand = bestCards;
+            console.log(`New best hand found for ${player.name}: ${handType}`);
+        } else if (handValue === bestHandValue) {
+            if (comparison > 0) {
                 winners = [player];
-                bestHandDetails = bestCards;
-            } else if (handValue === bestHandValue) {
-                //  ✅  Handle tie cases by comparing kicker
-                if (compareHands(bestCards, bestHandDetails) > 0) {
-
-                    winners = [player]; // New best kicker
-                    bestHandDetails = bestCards;
-                } else if (compareHands(bestCards, bestHandDetails) === 0) {
-                    winners.push(player); // Exact tie, add both winners
-
-                }
+                bestHand = bestCards;
+                console.log(`New better kicker found for ${player.name}.`);
+            } else if (comparison === 0) {
+                winners.push(player);
+                console.log(`Tie detected, adding ${player.name} as a winner.`);
             }
         }
     });
+
     return winners;
 }
+
 // Function to evaluate the hand of a player
 function evaluateHand(cards) {
-    const sortedHand = cards.slice().sort((a, b) => rankValues[b.rank] - rankValues[a.rank]);
-    const ranks = sortedHand.map(card => card.rank);
-    const suits = sortedHand.map(card => card.suit);
+    const combinations = getAllFiveCardCombos(cards);
+    let best = {
+        handValue: 0,
+        bestCards: [],
+        handType: "",
+        kicker: -1
+    };
 
-    if (isRoyalFlush(sortedHand, ranks, suits)) return { handValue: 10, bestCards: sortedHand, handType: "Royal Flush" };
-    if (isStraightFlush(sortedHand, ranks, suits)) return { handValue: 9, bestCards: sortedHand, handType: "Straight Flush" };
-    if (isFourOfAKind(sortedHand, ranks)) return { handValue: 8, bestCards: sortedHand, handType: "Four of a Kind" };
-    if (isFullHouse(sortedHand, ranks)) return { handValue: 7, bestCards: sortedHand, handType: "Full House" };
-    if (isFlush(sortedHand, suits)) return { handValue: 6, bestCards: sortedHand, handType: "Flush" };
-    if (isStraight(sortedHand, ranks)) return { handValue: 5, bestCards: sortedHand, handType: "Straight" };
-    if (isThreeOfAKind(sortedHand, ranks)) return { handValue: 4, bestCards: sortedHand, handType: "Three of a Kind" };
-    if (isTwoPair(sortedHand, ranks).result) return { handValue: 3, bestCards: sortedHand, handType: "Two Pair" };
-    if (isOnePair(sortedHand, ranks)) return { handValue: 2, bestCards: sortedHand, handType: "One Pair" };
-    return { handValue: 1, bestCards: sortedHand.slice(0, 5), handType: "High Card" };
+    for (let combo of combinations) {
+        const result = evaluateFiveCardHand(combo);
+        if (result.handValue > best.handValue ||
+            (result.handValue === best.handValue && compareHands(result.bestCards, best.bestCards) > 0)) {
+            best = result;
+        }
+    }
+
+    return best;
+}
+
+function getAllFiveCardCombos(cards) {
+    const results = [];
+    const combo = [];
+
+    function backtrack(start) {
+        if (combo.length === 5) {
+            results.push([...combo]);
+            return;
+        }
+        for (let i = start; i < cards.length; i++) {
+            combo.push(cards[i]);
+            backtrack(i + 1);
+            combo.pop();
+        }
+    }
+
+    backtrack(0);
+    return results;
+}
+
+function evaluateFiveCardHand(hand) {
+    const suits = hand.map(c => c.suit);
+    const ranks = hand.map(c => c.rank);
+    const values = hand.map(c => rankValues[c.rank]).sort((a, b) => b - a);
+    const rankCount = {};
+    ranks.forEach(r => rankCount[r] = (rankCount[r] || 0) + 1);
+
+    const isFlush = suits.every(s => s === suits[0]);
+    const isStraight = checkStraight(values);
+
+    // Royal Flush
+    if (isFlush && isStraight && values.includes(14) && values.includes(10)) {
+        return { handValue: 10, bestCards: hand, handType: "Royal Flush", kicker: -1 };
+    }
+
+    // Straight Flush
+    if (isFlush && isStraight) {
+        return { handValue: 9, bestCards: hand, handType: "Straight Flush", kicker: values[0] };
+    }
+
+    // Four of a Kind
+    if (Object.values(rankCount).includes(4)) {
+        const fourRank = Object.keys(rankCount).find(r => rankCount[r] === 4);
+        const kicker = values.find(v => v !== rankValues[fourRank]);
+        return {
+            handValue: 8,
+            bestCards: hand,
+            handType: "Four of a Kind",
+            kicker: kicker
+        };
+    }
+
+    // Full House
+    const hasThree = Object.values(rankCount).includes(3);
+    const hasPair = Object.values(rankCount).filter(v => v >= 2).length >= 2;
+    if (hasThree && hasPair) {
+        return { handValue: 7, bestCards: hand, handType: "Full House", kicker: -1 };
+    }
+
+    // Flush
+    if (isFlush) {
+        return { handValue: 6, bestCards: hand, handType: "Flush", kicker: values[0] };
+    }
+
+    // Straight
+    if (isStraight) {
+        return { handValue: 5, bestCards: hand, handType: "Straight", kicker: values[0] };
+    }
+
+    // Three of a Kind
+    if (Object.values(rankCount).includes(3)) {
+        return { handValue: 4, bestCards: hand, handType: "Three of a Kind", kicker: values[0] };
+    }
+
+    // Two Pair
+    const pairs = Object.entries(rankCount).filter(([r, c]) => c === 2).map(([r]) => rankValues[r]);
+    if (pairs.length === 2) {
+        pairs.sort((a, b) => b - a);
+        const kicker = values.find(v => v !== pairs[0] && v !== pairs[1]);
+        return { handValue: 3, bestCards: hand, handType: "Two Pair", kicker: kicker };
+    }
+
+    // One Pair
+    // One Pair
+if (pairs.length === 1) {
+    const pairValue = pairs[0];
+    const remaining = values.filter(v => v !== pairValue).slice(0, 3); // Get top 3 kickers
+    return { 
+        handValue: 2, 
+        bestCards: hand, 
+        handType: "One Pair", 
+        kicker: remaining.length > 0 ? remaining[0] : 0, 
+        pairValue: pairValue // Store the value of the pair explicitly
+    };
+}
+
+
+    // High Card
+    return { handValue: 1, bestCards: hand, handType: "High Card", kicker: values[0] };
+}
+
+function checkStraight(values) {
+    const unique = [...new Set(values)];
+    for (let i = 0; i <= unique.length - 5; i++) {
+        if (unique[i] - unique[i + 4] === 4) return true;
+    }
+    // Check wheel (A-2-3-4-5)
+    if (unique.includes(14) && unique.includes(2) && unique.includes(3) && unique.includes(4) && unique.includes(5)) {
+        return true;
+    }
+    return false;
 }
 
 // Helper functions to check for different hand types
@@ -626,13 +791,23 @@ function isOnePair(hand, ranks) {
     return false;
 }
 function compareHands(handA, handB) {
-    for (let i = 0; i < Math.min(handA.length, handB.length); i++) {
-        if (rankValues[handA[i].rank] > rankValues[handB[i].rank]) return 1;
-        if (rankValues[handA[i].rank] < rankValues[handB[i].rank]) return -1;
+    const valuesA = handA.map(c => rankValues[c.rank]).sort((a, b) => b - a);
+    const valuesB = handB.map(c => rankValues[c.rank]).sort((a, b) => b - a);
+    // If both hands have a pair, compare the pair values first
+    const pairA = valuesA.find((v, _, arr) => arr.filter(x => x === v).length === 2);
+    const pairB = valuesB.find((v, _, arr) => arr.filter(x => x === v).length === 2);
+    if (pairA && pairB) {
+        if (pairA > pairB) return 1;
+        if (pairA < pairB) return -1;
     }
-    return 0;
-    // Exact tie
+
+    for (let i = 0; i < 5; i++) {
+        if (valuesA[i] > valuesB[i]) return 1;
+        if (valuesA[i] < valuesB[i]) return -1;
+    }
+    return 0; // exact tie
 }
+
 // WebSocket server event handling
 wss.on('connection', function connection(ws) {
     console.log(' ✅  A new client connected');
@@ -640,25 +815,6 @@ wss.on('connection', function connection(ws) {
         console.log(' 📩  Received message from client:', message);
         try {
             const data = JSON.parse(message);
-
-            if (data.type === "cashout") {
-            let tableId = data.tableId;
-            let table = tables.get(tableId);
-            if (!table) return;
-
-            // Find and remove the player
-            table.players = table.players.filter(player => player.name !== data.playerName);
-            console.log(`❌ Player ${data.playerName} cashed out and left the table.`);
-
-            // Broadcast updated player list
-            broadcast({ type: "updatePlayers", players: table.players.map(({ ws, ...player }) => player), tableId: tableId }, tableId);
-
-            // If only one player remains, end the game
-            if (table.players.length === 1) {
-                console.log("🏆 Only one player remains, ending the game.");
-                showdown(tableId);
-            }
-        }
             //  ✅  Handle "Show or Hide" Decision
             if (data.type ===
                 "showHideDecision") {
@@ -699,19 +855,12 @@ wss.on('connection', function connection(ws) {
                     setTimeout(resetGame, 3000, ws.tableId);
                 }
             }
-            
             //  ✅  Handle other game actions separately
             if (data.type === 'join') {
-                const tokenAmount = data.tokens; // Use selected token amount
-
-    if (!tokenAmount || tokenAmount <= 0) {
-        console.warn(`❌ Invalid token amount for ${data.name}`);
-        return;
-    }
                 const player = {
                     name: data.name,
                     ws: ws,
-                    tokens: tokenAmount,
+                    tokens: 1000,
                     hand: [],
                     currentBet: 0,
                     status: 'active',
@@ -737,7 +886,7 @@ wss.on('connection', function connection(ws) {
                     tables.set(tableId, table);
                 }
                 table.players.push(player);
-                console.log(` ➕  Player ${data.name} with ${tokenAmount} tokens . Total players: ${table.players.length}`);
+                console.log(` ➕  Player ${data.name} joined. Total players: ${table.players.length}`);
                 broadcast({ type: 'updatePlayers', players: table.players.map(({ ws, ...player }) => player) , tableId: tableId }, tableId);
             } else if (data.type === 'startGame') {
                 startGame(data.tableId);
