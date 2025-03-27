@@ -6,6 +6,26 @@ const app = express();
 app.use(cors());
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
+const bodyParser = require("body-parser");
+
+app.use(bodyParser.json());
+
+// Store table settings
+app.post("/registerTable", (req, res) => {
+    const { tableId, solToToken, smallBlind, bigBlind } = req.body;
+    tables[tableId] = { solToToken, smallBlind, bigBlind };
+    res.json({ message: "Table registered successfully!" });
+});
+
+// Retrieve table settings
+app.get("/getTableSettings", (req, res) => {
+    const tableId = req.query.tableId;
+    if (tables[tableId]) {
+        res.json(tables[tableId]);
+    } else {
+        res.status(404).json({ error: "Table not found" });
+    }
+});
 
 // Store game state for each table
 const tables = new Map();
@@ -16,18 +36,45 @@ const ranks = ["2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A"]
 const rankValues = {
     "2": 2, "3": 3, "4": 4, "5": 5, "6": 6, "7": 7, "8": 8, "9": 9, "10": 10, "J": 11, "Q": 12, "K": 13, "A": 14
 }; 
- let players = [];
- let tableCards = [];
-let pot = 0;
-let currentPlayerIndex = 0;
-let deckForGame = [];
-let currentBet = 0;
-let dealerIndex = 0;
-let round = 0;
-let smallBlindAmount = 10;
-let bigBlindAmount = 20;
-let lastRaiseAmount = 0;
-let playersWhoActed = new Set();
+
+app.post("/registerTable", (req, res) => {
+    const { tableId, solToToken, smallBlind, bigBlind } = req.body;
+
+    if (tables.has(tableId)) {
+        return res.status(400).json({ error: "Table already exists!" });
+    }
+
+    tables.set(tableId, {
+        solToToken,
+        smallBlind,
+        bigBlind,
+        players: [],
+        tableCards: [],
+        pot: 0,
+        currentBet: 0,
+        currentPlayerIndex: 0,
+        dealerIndex: 0,
+        round: 0,
+        deckForGame: createDeck(),
+        lastRaiseAmount: 0,
+        playersWhoActed: new Set()
+    });
+
+    res.json({ message: "Table registered successfully!" });
+});
+
+
+app.get("/getTableSettings", (req, res) => {
+    const tableId = req.query.tableId;
+
+    if (tables.has(tableId)) {
+        res.json(tables.get(tableId));
+    } else {
+        res.status(404).json({ error: "Table not found" });
+    }
+});
+
+
 // Function to create a new deck of cards
 function createDeck() {
     let deck = [];
