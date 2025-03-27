@@ -5,7 +5,7 @@ const cors = require("cors");
 const bodyParser = require("body-parser");
 
 const app = express();
-app.use(cors({ origin: "https://apramay.github.io", methods: ["GET", "POST"], allowedHeaders: ["Content-Type"] }));
+app.use(cors()); // Allow all origins (not recommended for production)
 app.use(bodyParser.json());
 
 const server = http.createServer(app);
