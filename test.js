@@ -26,6 +26,7 @@ let dealerIndex = 0;
 let round = 0;
 let smallBlindAmount = 10;
 let bigBlindAmount = 20;
+let lastRaiseAmount = 0;
 let playersWhoActed = new Set();
 // Function to create a new deck of cards
 function createDeck() {
@@ -97,6 +98,7 @@ function startNewHand(tableId) {
     table.playersWhoActed.clear();
     table.deckForGame = shuffleDeck(createDeck());
     table.round = 0;
+    table.lastRaiseAmount = 0;
     // Reset to preflop
     // Move the dealer button
     let activePlayers = table.players.filter(p => p.tokens > 0);
@@ -111,14 +113,17 @@ function startNewHand(tableId) {
     // Reset player states and deal cards
     table.players.forEach((player, index) => {
         player.hand = player.tokens > 0 ? dealHand(table.deckForGame, 2) : [];
-        player.currentBet = 0;
+           player.currentBet = 0;
+        player.totalContribution = 0; // ✅ IMPORTANT
         player.status = player.tokens > 0 ? "active" : "inactive";
         player.isSmallBlind = (activePlayers[smallBlindIndex] && player.name === activePlayers[smallBlindIndex].name);
         player.isBigBlind = (activePlayers[bigBlindIndex] && player.name === activePlayers[bigBlindIndex].name);
-        player.tokens -= player.isSmallBlind ? table.smallBlindAmount : player.isBigBlind ? table.bigBlindAmount : 0;
+       const blindAmount = player.isSmallBlind ? table.smallBlindAmount : player.isBigBlind ? table.bigBlindAmount : 0;
 
-        table.pot += player.isSmallBlind ? table.smallBlindAmount : player.isBigBlind ? table.bigBlindAmount : 0;
-        player.currentBet = player.isSmallBlind ? table.smallBlindAmount : player.isBigBlind ? table.bigBlindAmount : 0;
+        player.tokens -= blindAmount;
+        player.currentBet = blindAmount;
+        player.totalContribution = blindAmount; // ✅ Fix: Incorporate blinds into totalContribution
+        table.pot += blindAmount;
     });
     table.currentBet = table.bigBlindAmount;
     // Set the starting player (after the big blind)
@@ -236,51 +241,32 @@ if (table.playersWhoActed.has(player.name)) {
     broadcast({ type: "playerTurn", playerName: player.name, tableId: tableId }, tableId);
 }
 
-
 function isBettingRoundOver(tableId) {
     const table = tables.get(tableId);
     if (!table) return true;
 
-    console.log(" 📊  Checking if betting round is over...");
+    console.log("📊 Checking if betting round is over...");
     console.log("playersWhoActed:", [...table.playersWhoActed]);
     console.log("Current Bet:", table.currentBet);
-    console.log("Active Players:", table.players.filter(p => p.status === "active").map(p => p.name));
-    let activePlayers = table.players.filter(p => p.status === "active" && !p.allIn && p.tokens > 0);
-        console.log("Active Players (non-all-in):", activePlayers.map(p => p.name));
+    
+    // MODIFIED: Improved active player filtering
+    let activePlayers = table.players.filter(p => 
+        p.status === "active" && !p.allIn && p.tokens > 0
+    );
+    console.log("Active Players (non-all-in):", activePlayers.map(p => p.name));
 
+    // MODIFIED: More accurate completion check
+    const allActed = activePlayers.every(p => table.playersWhoActed.has(p.name));
+    const allCalled = table.players.every(p => 
+        p.status !== "active" || 
+        p.allIn || 
+        p.currentBet === table.currentBet
+    );
 
-    //  ✅  Only one player left, round ends immediately
-    //  ✅  Ensure all active players have either checked or matched the current bet
-    const allCalledOrChecked = activePlayers.every(player => {
-        const acted = table.playersWhoActed.has(player.name);
-        const matchedBet = player.currentBet === table.currentBet || table.currentBet === 0;
-        console.log(`  - ${player.name} => Acted: ${acted}, MatchedBet: ${matchedBet}`);
-        return acted && matchedBet;
-    });
-    console.log(" ✅  Betting round over:", allCalledOrChecked);
-    return allCalledOrChecked;
+    console.log("✅ Betting round over:", allActed && allCalled);
+    return (activePlayers.length === 0) || (allActed && allCalled);
 }
 
-function bigBlindCheckRaiseOption(tableId) {
-    const table = tables.get(tableId);
-    if (!table) return;
-
-    let bigBlindPlayer = table.players[(table.dealerIndex + 2) % table.players.length];
-    if (table.currentBet === table.bigBlindAmount) {
-        console.log(`${bigBlindPlayer.name}, you can check or bet.`);
-        bigBlindPlayer.ws.send(JSON.stringify({
-            type: "bigBlindAction",
-            options: ["check", "raise"]
-        }));
-    } else {
-        console.log(`${bigBlindPlayer.name}, you must call or fold.`);
-        bigBlindPlayer.ws.send(JSON.stringify({
-            type: "bigBlindAction",
-            message: `${bigBlindPlayer.name}, you must call or fold.`,
-            options: ["call", "fold", "raise"]
-        }));
-    }
-}
 // Function to deal a hand of cards to a player
 function dealHand(deck, numCards) {
     const hand = [];
@@ -333,29 +319,29 @@ function nextRound(tableId) {
     if (table.round === 0) {
         table.round++; 
         table.tableCards = dealHand(table.deckForGame, 3); // Flop
+
         console.log("🃏 Flop dealt:", table.tableCards);
         broadcast({ type: "message", text: `Flop: ${JSON.stringify(table.tableCards)}`, tableId: tableId }, tableId);
     } else if (table.round === 1) {
         table.round++;
-        if (table.deckForGame.length > 0) {
             table.tableCards.push(dealHand(table.deckForGame, 1)[0]);
             // Turn
             broadcast({ type: "message", text: `Turn: ${JSON.stringify(table.tableCards[3])}` , tableId: tableId }, tableId)
-        }
+        
     } else if (table.round === 2) {
         table.round++;
-        if (table.deckForGame.length > 0) {
             table.tableCards.push(dealHand(table.deckForGame, 1)[0]);
             // Turn
             broadcast({ type: "message", text: `River: ${JSON.stringify(table.tableCards[4])}` ,tableId: tableId }, tableId);
         }
-    } else if (table.round === 3) {
+    else if (table.round === 3) {
         showdown(tableId);
         return;
     }
     broadcastGameState(tableId);
     setTimeout(() => startFlopBetting(tableId), 1500);
 }
+
 function showdown(tableId) {
     const table = tables.get(tableId);
     if (!table) return;
@@ -412,48 +398,57 @@ function distributePot(tableId) {
     if (!table) return;
 
     console.log("💰 Distributing the pot...");
-    let activePlayers = table.players.filter(p => p.status === "active" || p.allIn);
-    activePlayers.sort((a, b) => a.currentBet - b.currentBet);
+
+    // Only players who didn't fold are eligible
+    const playersInHand = table.players.filter(p => p.status !== "folded");
+
+    // Cache hand evaluations
+    const handStrengthMap = new Map();
+    playersInHand.forEach(p => {
+        const fullHand = p.hand.concat(table.tableCards);
+        handStrengthMap.set(p.name, evaluateHand(fullHand));
+    });
+
+    // Sort players by contribution (ascending)
+    const sorted = [...playersInHand].sort((a, b) => a.totalContribution - b.totalContribution);
+    const contributionLevels = [...new Set(sorted.map(p => p.totalContribution))];
 
     let totalPot = table.pot;
-    let sidePots = [];
-    let remainingPot = totalPot;
-    let lastBet = 0;
+    let remainingPlayers = [...playersInHand];
+    let lastLevel = 0;
 
-    // Create multiple side pots based on increasing all-in amounts
-    for (let i = 0; i < activePlayers.length; i++) {
-        let player = activePlayers[i];
-        let sidePotAmount = (player.currentBet - lastBet) * (activePlayers.length - i);
-        if (sidePotAmount > 0) {
-            sidePots.push({
-                amount: sidePotAmount,
-                eligiblePlayers: activePlayers.slice(i)
-            });
-            remainingPot -= sidePotAmount;
-        }
-        lastBet = player.currentBet;
+    for (const level of contributionLevels) {
+        // Eligible players: contributed >= this level
+        const eligible = remainingPlayers.filter(p => p.totalContribution >= level);
+
+        const levelAmount = (level - lastLevel) * eligible.length;
+
+        // Track and verify correct pot distribution
+        totalPot -= levelAmount;
+        lastLevel = level;
+
+        console.log(`💡 Side Pot Level ${level}: ${levelAmount} chips between ${eligible.map(p => p.name).join(", ")}`);
+
+        const winners = determineWinners(eligible, table, handStrengthMap);
+        const baseShare = Math.floor(levelAmount / winners.length);
+        let remainder = levelAmount % winners.length;
+
+        winners.forEach((winner, i) => {
+            const winAmount = baseShare + (i < remainder ? 1 : 0);
+            winner.tokens += winAmount;
+            console.log(`🏆 ${winner.name} wins ${winAmount} from side pot level ${level}`);
+        });
+
+        // Remove players who are no longer in remaining levels
+        remainingPlayers = remainingPlayers.filter(p => p.totalContribution > level);
     }
 
-    // Award side pots
-    sidePots.forEach(sidePot => {
-        let winners = determineWinners(sidePot.eligiblePlayers, table);
-        let splitPot = Math.floor(sidePot.amount / winners.length);
-        winners.forEach(winner => {
-            winner.tokens += splitPot;
-            console.log(`🏆 ${winner.name} wins ${splitPot} from a side pot.`);
-        });
-    });
-
-    // Award main pot
-    let mainWinners = determineWinners(activePlayers, table);
-    let splitPot = Math.floor(remainingPot / mainWinners.length);
-    mainWinners.forEach(winner => {
-        winner.tokens += splitPot;
-        console.log(`🏆 ${winner.name} wins ${splitPot} from the main pot.`);
-    });
-
+    // Final cleanup
     table.pot = 0;
-    table.sidePots = [];
+    table.players.forEach(p => {
+        p.currentBet = 0;
+        p.totalContribution = 0;
+    });
 }
 
 
@@ -490,53 +485,181 @@ function resetGame(tableId) {
     startNewHand(tableId); //  ✅  Start the new round with correct dealer
 }
 function determineWinners(playerList, table) {
-    if (playerList.length === 0) {
-        return [];
-    }
+    if (playerList.length === 0) return [];
+
     let bestHandValue = -1;
     let winners = [];
-    let bestHandDetails = null;
-    // To store best hand details for tiebreakers
+    let bestHand = null;
+
     playerList.forEach(player => {
-        if (player.status !== "folded") {
-            const fullHand = player.hand.concat(table.tableCards);
-            const { handValue, bestCards } = evaluateHand(fullHand);
-            if (handValue > bestHandValue) {
-                bestHandValue = handValue;
+        if (player.status === "folded") return;
 
+        const fullHand = player.hand.concat(table.tableCards);
+        const { handValue, bestCards, kicker, handType } = evaluateHand(fullHand);
+
+        console.log(`Player ${player.name} evaluated hand:`);
+        console.log(`Full Hand: ${JSON.stringify(fullHand.map(card => card.rank + card.suit))}`);
+        console.log(`Hand Type: ${handType}`);
+        console.log(`Hand Value: ${handValue}`);
+        console.log(`Best Cards: ${JSON.stringify(bestCards.map(card => card.rank + card.suit))}`);
+        console.log(`Kicker: ${kicker}`);
+
+        const comparison = bestHand
+            ? compareHands(bestCards, bestHand)
+            : 1;
+
+        if (handValue > bestHandValue) {
+            winners = [player];
+            bestHandValue = handValue;
+            bestHand = bestCards;
+            console.log(`New best hand found for ${player.name}: ${handType}`);
+        } else if (handValue === bestHandValue) {
+            if (comparison > 0) {
                 winners = [player];
-                bestHandDetails = bestCards;
-            } else if (handValue === bestHandValue) {
-                //  ✅  Handle tie cases by comparing kicker
-                if (compareHands(bestCards, bestHandDetails) > 0) {
-
-                    winners = [player]; // New best kicker
-                    bestHandDetails = bestCards;
-                } else if (compareHands(bestCards, bestHandDetails) === 0) {
-                    winners.push(player); // Exact tie, add both winners
-
-                }
+                bestHand = bestCards;
+                console.log(`New better kicker found for ${player.name}.`);
+            } else if (comparison === 0) {
+                winners.push(player);
+                console.log(`Tie detected, adding ${player.name} as a winner.`);
             }
         }
     });
+
     return winners;
 }
+
 // Function to evaluate the hand of a player
 function evaluateHand(cards) {
-    const sortedHand = cards.slice().sort((a, b) => rankValues[b.rank] - rankValues[a.rank]);
-    const ranks = sortedHand.map(card => card.rank);
-    const suits = sortedHand.map(card => card.suit);
+    const combinations = getAllFiveCardCombos(cards);
+    let best = {
+        handValue: 0,
+        bestCards: [],
+        handType: "",
+        kicker: -1
+    };
 
-    if (isRoyalFlush(sortedHand, ranks, suits)) return { handValue: 10, bestCards: sortedHand, handType: "Royal Flush" };
-    if (isStraightFlush(sortedHand, ranks, suits)) return { handValue: 9, bestCards: sortedHand, handType: "Straight Flush" };
-    if (isFourOfAKind(sortedHand, ranks)) return { handValue: 8, bestCards: sortedHand, handType: "Four of a Kind" };
-    if (isFullHouse(sortedHand, ranks)) return { handValue: 7, bestCards: sortedHand, handType: "Full House" };
-    if (isFlush(sortedHand, suits)) return { handValue: 6, bestCards: sortedHand, handType: "Flush" };
-    if (isStraight(sortedHand, ranks)) return { handValue: 5, bestCards: sortedHand, handType: "Straight" };
-    if (isThreeOfAKind(sortedHand, ranks)) return { handValue: 4, bestCards: sortedHand, handType: "Three of a Kind" };
-    if (isTwoPair(sortedHand, ranks).result) return { handValue: 3, bestCards: sortedHand, handType: "Two Pair" };
-    if (isOnePair(sortedHand, ranks)) return { handValue: 2, bestCards: sortedHand, handType: "One Pair" };
-    return { handValue: 1, bestCards: sortedHand.slice(0, 5), handType: "High Card" };
+    for (let combo of combinations) {
+        const result = evaluateFiveCardHand(combo);
+        if (result.handValue > best.handValue ||
+            (result.handValue === best.handValue && compareHands(result.bestCards, best.bestCards) > 0)) {
+            best = result;
+        }
+    }
+
+    return best;
+}
+
+function getAllFiveCardCombos(cards) {
+    const results = [];
+    const combo = [];
+
+    function backtrack(start) {
+        if (combo.length === 5) {
+            results.push([...combo]);
+            return;
+        }
+        for (let i = start; i < cards.length; i++) {
+            combo.push(cards[i]);
+            backtrack(i + 1);
+            combo.pop();
+        }
+    }
+
+    backtrack(0);
+    return results;
+}
+
+function evaluateFiveCardHand(hand) {
+    const suits = hand.map(c => c.suit);
+    const ranks = hand.map(c => c.rank);
+    const values = hand.map(c => rankValues[c.rank]).sort((a, b) => b - a);
+    const rankCount = {};
+    ranks.forEach(r => rankCount[r] = (rankCount[r] || 0) + 1);
+
+    const isFlush = suits.every(s => s === suits[0]);
+    const isStraight = checkStraight(values);
+
+    // Royal Flush
+    if (isFlush && isStraight && values.includes(14) && values.includes(10)) {
+        return { handValue: 10, bestCards: hand, handType: "Royal Flush", kicker: -1 };
+    }
+
+    // Straight Flush
+    if (isFlush && isStraight) {
+        return { handValue: 9, bestCards: hand, handType: "Straight Flush", kicker: values[0] };
+    }
+
+    // Four of a Kind
+    if (Object.values(rankCount).includes(4)) {
+        const fourRank = Object.keys(rankCount).find(r => rankCount[r] === 4);
+        const kicker = values.find(v => v !== rankValues[fourRank]);
+        return {
+            handValue: 8,
+            bestCards: hand,
+            handType: "Four of a Kind",
+            kicker: kicker
+        };
+    }
+
+    // Full House
+    const hasThree = Object.values(rankCount).includes(3);
+    const hasPair = Object.values(rankCount).filter(v => v >= 2).length >= 2;
+    if (hasThree && hasPair) {
+        return { handValue: 7, bestCards: hand, handType: "Full House", kicker: -1 };
+    }
+
+    // Flush
+    if (isFlush) {
+        return { handValue: 6, bestCards: hand, handType: "Flush", kicker: values[0] };
+    }
+
+    // Straight
+    if (isStraight) {
+        return { handValue: 5, bestCards: hand, handType: "Straight", kicker: values[0] };
+    }
+
+    // Three of a Kind
+    if (Object.values(rankCount).includes(3)) {
+        return { handValue: 4, bestCards: hand, handType: "Three of a Kind", kicker: values[0] };
+    }
+
+    // Two Pair
+    const pairs = Object.entries(rankCount).filter(([r, c]) => c === 2).map(([r]) => rankValues[r]);
+    if (pairs.length === 2) {
+        pairs.sort((a, b) => b - a);
+        const kicker = values.find(v => v !== pairs[0] && v !== pairs[1]);
+        return { handValue: 3, bestCards: hand, handType: "Two Pair", kicker: kicker };
+    }
+
+    // One Pair
+    // One Pair
+if (pairs.length === 1) {
+    const pairValue = pairs[0];
+    const remaining = values.filter(v => v !== pairValue).slice(0, 3); // Get top 3 kickers
+    return { 
+        handValue: 2, 
+        bestCards: hand, 
+        handType: "One Pair", 
+        kicker: remaining.length > 0 ? remaining[0] : 0, 
+        pairValue: pairValue // Store the value of the pair explicitly
+    };
+}
+
+
+    // High Card
+    return { handValue: 1, bestCards: hand, handType: "High Card", kicker: values[0] };
+}
+
+function checkStraight(values) {
+    const unique = [...new Set(values)];
+    for (let i = 0; i <= unique.length - 5; i++) {
+        if (unique[i] - unique[i + 4] === 4) return true;
+    }
+    // Check wheel (A-2-3-4-5)
+    if (unique.includes(14) && unique.includes(2) && unique.includes(3) && unique.includes(4) && unique.includes(5)) {
+        return true;
+    }
+    return false;
 }
 
 // Helper functions to check for different hand types
@@ -626,13 +749,23 @@ function isOnePair(hand, ranks) {
     return false;
 }
 function compareHands(handA, handB) {
-    for (let i = 0; i < Math.min(handA.length, handB.length); i++) {
-        if (rankValues[handA[i].rank] > rankValues[handB[i].rank]) return 1;
-        if (rankValues[handA[i].rank] < rankValues[handB[i].rank]) return -1;
+    const valuesA = handA.map(c => rankValues[c.rank]).sort((a, b) => b - a);
+    const valuesB = handB.map(c => rankValues[c.rank]).sort((a, b) => b - a);
+    // If both hands have a pair, compare the pair values first
+    const pairA = valuesA.find((v, _, arr) => arr.filter(x => x === v).length === 2);
+    const pairB = valuesB.find((v, _, arr) => arr.filter(x => x === v).length === 2);
+    if (pairA && pairB) {
+        if (pairA > pairB) return 1;
+        if (pairA < pairB) return -1;
     }
-    return 0;
-    // Exact tie
+
+    for (let i = 0; i < 5; i++) {
+        if (valuesA[i] > valuesB[i]) return 1;
+        if (valuesA[i] < valuesB[i]) return -1;
+    }
+    return 0; // exact tie
 }
+
 // WebSocket server event handling
 wss.on('connection', function connection(ws) {
     console.log(' ✅  A new client connected');
@@ -772,50 +905,48 @@ wss.on('connection', function connection(ws) {
 function handleRaise(data, tableId) {
     const table = tables.get(tableId);
     if (!table) return;
-    
+
     const player = table.players.find(p => p.name === data.playerName);
     if (!player) return;
-    
-    let raiseAmount = parseInt(data.amount);
-    if (raiseAmount > player.tokens) raiseAmount = player.tokens; // All-in scenario
-    
-    const totalBet = player.currentBet + raiseAmount;
-    player.tokens -= raiseAmount;
-    table.pot += raiseAmount;
-    player.currentBet = totalBet;
-    
+
+    const raiseAmount = parseInt(data.amount);
+    const minRaise = table.lastRaiseAmount || table.bigBlindAmount;
+
+    if (raiseAmount < minRaise && raiseAmount !== player.tokens) {
+        console.log(`❌ ${player.name} must raise by at least ${minRaise}`);
+        return;
+    }
+
+    const requiredToCall = Math.max(table.currentBet - player.currentBet, 0);
+    const totalBet = requiredToCall + raiseAmount;
+    const chipsToAdd = Math.min(totalBet, player.tokens);
+
+    player.tokens -= chipsToAdd;
+    player.currentBet += chipsToAdd;
+    player.totalContribution += chipsToAdd;
+    table.pot += chipsToAdd;
+
     if (player.tokens === 0) {
         player.allIn = true;
     }
-    
-    console.log(`${player.name} raises to ${totalBet}`);
-    
-    // Handle side pot creation
-    const maxEffectiveStack = Math.min(...table.players.map(p => p.currentBet));
-    table.sidePots = table.sidePots || [];
-    if (totalBet > maxEffectiveStack) {
-        console.log(`${player.name} raised beyond the effective stack, creating a side pot`);
-        table.sidePots.push({
-            amount: totalBet - maxEffectiveStack,
-            eligiblePlayers: table.players.filter(p => p.currentBet >= totalBet)
-        });
-    }
-    
-    table.currentBet = totalBet;
-    table.playersWhoActed.clear(); // Reset for new round
+
+    table.currentBet = Math.max(table.currentBet, player.currentBet);
+    table.lastRaiseAmount = raiseAmount;
+    table.playersWhoActed.clear();
     table.playersWhoActed.add(player.name);
-    
+
+    console.log(`${player.name} raises to ${player.currentBet}`);
+    console.log(`💸 Contributions: ${table.players.map(p => `${p.name}:${p.totalContribution}`).join(", ")}`);
+
     broadcast({
         type: "updateActionHistory",
-        action: `${data.playerName} raised to ${totalBet}`
+        action: `${data.playerName} raised to ${player.currentBet}`
     }, tableId);
-    broadcast({ type: "raise", playerName: data.playerName, amount: totalBet, tableId: tableId }, tableId);
-    
+
     table.currentPlayerIndex = getNextPlayerIndex(table.currentPlayerIndex, tableId);
     broadcastGameState(tableId);
     bettingRound(tableId);
 }
-
 
 function handleBet(data, tableId) {
 const table = tables.get(tableId);
@@ -861,75 +992,41 @@ function handleCall(data, tableId) {
     const table = tables.get(tableId);
     if (!table) return;
 
-    console.log(` 🔄  ${data.playerName} performed action: ${data.type}`);
-    console.log("Before updating playersWhoActed:", [...table.playersWhoActed]);
-
     const player = table.players.find(p => p.name === data.playerName);
-    if (!player) {
-        console.error("Player not found:", data.playerName);
-        return;
-    }
+    if (!player) return;
 
-    const callAmount = table.currentBet - player.currentBet;
-    if (callAmount > player.tokens) {
-        // Player is calling all-in with less than the required amount
-        const allInAmount = player.tokens;
-        player.tokens = 0;
-        player.currentBet += allInAmount;
-        table.pot += allInAmount;
+    const requiredToCall = table.currentBet - player.currentBet;
+    const chipsToAdd = Math.min(requiredToCall, player.tokens);
+
+    // Update contributions and pot
+    player.tokens -= chipsToAdd;
+    player.currentBet += chipsToAdd;
+    player.totalContribution += chipsToAdd;
+    table.pot += chipsToAdd;
+
+    if (player.tokens === 0) {
         player.allIn = true;
-        
-        console.log(`${player.name} goes all-in for ${allInAmount}`);
-
-        // Adjust the bet to match the all-in call
-        if (allInAmount < callAmount) {
-            console.log(`${data.playerName} could not match ${table.currentBet}, adjusting side pot`);
-            table.sidePots = table.sidePots || [];
-            table.sidePots.push({
-                amount: callAmount - allInAmount,
-                eligiblePlayers: table.players.filter(p => p.currentBet >= callAmount)
-            });
-        }
-    } else {
-        player.tokens -= callAmount;
-        table.pot += callAmount;
-        player.currentBet = table.currentBet;
-    }
-
-    // Handle re-shove scenario
-    const remainingPlayers = table.players.filter(p => p.tokens > 0 && !p.allIn);
-    if (remainingPlayers.length === 1) {
-        // If only one player left, excess chips must be refunded to over-betting player
-        const maxEffectiveStack = Math.min(...table.players.map(p => p.currentBet));
-        table.players.forEach(p => {
-            if (p.currentBet > maxEffectiveStack) {
-                const excess = p.currentBet - maxEffectiveStack;
-                p.tokens += excess;
-                p.currentBet = maxEffectiveStack;
-                table.pot -= excess;
-                console.log(`${p.name} gets refunded ${excess} chips.`);
-            }
-        });
+        console.log(`💥 ${player.name} goes all-in for ${chipsToAdd}`);
     }
 
     table.playersWhoActed.add(player.name);
-    console.log("After updating playersWhoActed:", [...table.playersWhoActed]);
-
     broadcast({
         type: "updateActionHistory",
-        action: `${data.playerName} called ${Math.min(callAmount, player.tokens)}`
+        action: `${data.playerName} called ${chipsToAdd}`
     }, tableId);
-    broadcast({ type: "call", playerName: data.playerName, tableId: tableId }, tableId);
 
     table.currentPlayerIndex = getNextPlayerIndex(table.currentPlayerIndex, tableId);
     if (table.currentPlayerIndex !== -1) {
         bettingRound(tableId);
     } else {
-        console.log(" ✅  All players have acted. Moving to next round.");
+        console.log("✅ All players have acted. Moving to next round.");
         setTimeout(nextRound, 1000, tableId);
     }
+
     broadcastGameState(tableId);
 }
+
+
 function handleFold(data, tableId) {
 const table = tables.get(tableId);
 if (!table) return;
