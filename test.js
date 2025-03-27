@@ -2,36 +2,16 @@ const express = require("express");
 const http = require("http");
 const WebSocket = require("ws");
 const cors = require("cors");
-const app = express();
-app.use(cors({
-    origin: "https://apramay.github.io", // Allow frontend to communicate
-    methods: ["GET", "POST"],
-    allowedHeaders: ["Content-Type"]
-}));
-const server = http.createServer(app);
-const wss = new WebSocket.Server({ server });
 const bodyParser = require("body-parser");
 
+const app = express();
+app.use(cors({ origin: "https://apramay.github.io", methods: ["GET", "POST"], allowedHeaders: ["Content-Type"] }));
 app.use(bodyParser.json());
 
-// Store table settings
-app.post("/registerTable", (req, res) => {
-    const { tableId, solToToken, smallBlind, bigBlind } = req.body;
-    tables[tableId] = { solToToken, smallBlind, bigBlind };
-    res.json({ message: "Table registered successfully!" });
-});
+const server = http.createServer(app);
+const wss = new WebSocket.Server({ server });
 
-// Retrieve table settings
-app.get("/getTableSettings", (req, res) => {
-    const tableId = req.query.tableId;
-    if (tables[tableId]) {
-        res.json(tables[tableId]);
-    } else {
-        res.status(404).json({ error: "Table not found" });
-    }
-});
-
-// Store game state for each table
+// Store table states
 const tables = new Map();
 
 // Card and game constants
@@ -41,42 +21,6 @@ const rankValues = {
     "2": 2, "3": 3, "4": 4, "5": 5, "6": 6, "7": 7, "8": 8, "9": 9, "10": 10, "J": 11, "Q": 12, "K": 13, "A": 14
 }; 
 
-app.post("/registerTable", (req, res) => {
-    const { tableId, solToToken, smallBlind, bigBlind } = req.body;
-
-    if (tables.has(tableId)) {
-        return res.status(400).json({ error: "Table already exists!" });
-    }
-
-    tables.set(tableId, {
-        solToToken,
-        smallBlind,
-        bigBlind,
-        players: [],
-        tableCards: [],
-        pot: 0,
-        currentBet: 0,
-        currentPlayerIndex: 0,
-        dealerIndex: 0,
-        round: 0,
-        deckForGame: createDeck(),
-        lastRaiseAmount: 0,
-        playersWhoActed: new Set()
-    });
-
-    res.json({ message: "Table registered successfully!" });
-});
-
-
-app.get("/getTableSettings", (req, res) => {
-    const tableId = req.query.tableId;
-
-    if (tables.has(tableId)) {
-        res.json(tables.get(tableId));
-    } else {
-        res.status(404).json({ error: "Table not found" });
-    }
-});
 
 
 // Function to create a new deck of cards
@@ -89,6 +33,36 @@ function createDeck() {
     }); 
     return deck.sort(() => Math.random() - 0.5); 
 }
+app.post("/registerTable", (req, res) => {
+    const { tableId, solToToken, smallBlind, bigBlind } = req.body;
+
+    if (tables.has(tableId)) {
+        return res.status(400).json({ error: "Table already exists!" });
+    }
+
+    tables.set(tableId, {
+        solToToken,
+        smallBlindAmount: smallBlind,
+        bigBlindAmount: bigBlind,
+        players: [],
+        tableCards: [],
+        pot: 0,
+        currentBet: 0,
+        dealerIndex: 0,
+        deckForGame: createDeck(),
+        lastRaiseAmount: 0,
+        playersWhoActed: new Set()
+    });
+
+    res.json({ message: "Table registered successfully!" });
+});
+
+// Get table settings
+app.get("/getTableSettings", (req, res) => {
+    const table = tables.get(req.query.tableId);
+    table ? res.json(table) : res.status(404).json({ error: "Table not found" });
+});
+
 // Function to broadcast data to all connected clients
 function broadcast(data, tableId) {
     const jsonData = JSON.stringify(data);
