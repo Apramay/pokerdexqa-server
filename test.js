@@ -8,7 +8,8 @@ const app = express();
 app.use(cors({
     origin: "https://apramay.github.io", //  ✅  Allow requests from your frontend
     methods: ["GET", "POST", "OPTIONS"]  //  ✅  Specify allowed HTTP methods
-}));app.use(bodyParser.json());
+}));
+app.use(bodyParser.json());
 
 const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
