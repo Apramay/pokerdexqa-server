@@ -37,7 +37,7 @@ function createDeck() {
     return deck.sort(() => Math.random() - 0.5); 
 }
 app.post("/registerTable", (req, res) => {
-    const { tableId, solToToken, smallBlind, bigBlind } = req.body;
+    const { tableId, solToToken, smallBlind, bigBlind, gameType } = req.body;
 
     if (tables.has(tableId)) {
         return res.status(400).json({ error: "Table already exists!" });
