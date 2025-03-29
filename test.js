@@ -480,6 +480,44 @@ function distributePot(tableId) {
     });
 }
 
+function addTokens(tableId, playerName, additionalTokens) {
+    const table = tables.get(tableId);
+    if (!table) return;
+
+    //  ✅  Check if it's between hands (e.g., round is 0 or game is being reset)
+    if (table.round !== 0 && table.tableCards.length > 0) {
+        console.log("❌ Cannot add tokens during a hand.");
+        return false; // Or send an error message to the client
+    }
+
+    const player = table.players.find(p => p.name === playerName);
+    if (!player) {
+        console.log("❌ Player not found.");
+        return false; // Or send an error message to the client
+    }
+
+    const maxTokens = table.bigBlindAmount * 100;
+
+    //  ✅  Check for limit game condition
+    if (table.gameType === "limit") {
+        if (player.tokens < maxTokens) {
+            const tokensToAdd = Math.min(additionalTokens, maxTokens - player.tokens); // Limit the add amount
+            player.tokens += tokensToAdd;
+            console.log(`✅ ${playerName} added ${tokensToAdd} tokens. New balance: ${player.tokens}`);
+            broadcastGameState(tableId);
+            return true;
+        } else {
+            console.log("❌ Player already has the maximum allowed tokens.");
+            return false; // Or send an error message to the client
+        }
+    } else {
+        //  ✅  No-limit - Allow adding tokens (you might want to add some restrictions here too)
+        player.tokens += additionalTokens;
+        console.log(`✅ ${playerName} added ${additionalTokens} tokens. New balance: ${player.tokens}`);
+        broadcastGameState(tableId);
+        return true;
+    }
+}
 
 function resetGame(tableId) {
     const table = tables.get(tableId);
@@ -508,6 +546,11 @@ function resetGame(tableId) {
             player.status = "inactive"; // ✅ Out of chips, cannot play but stays at the table
             console.log(` ❌ ${player.name} is out of chips and inactive.`);
         }
+        if (player.status === "inactive" && player.tokens < table.bigBlindAmount * 100) {
+            //  ⚠️  Example: Add 10% of max buy-in if inactive and below max
+            addTokens(tableId, player.name, table.bigBlindAmount * 10);
+        }
+    });
 
     });
     console.log(` 🎲  New dealer is: ${table.players[table.dealerIndex].name}`);
@@ -860,6 +903,17 @@ wss.on('connection', function connection(ws) {
                 if (playersWhoNeedToDecide.length === 0 && ws.tableId) {
                     setTimeout(resetGame, 3000, ws.tableId);
                 }
+            }
+            if (data.type === "addTokens") {
+                const tableId = data.tableId;
+                if (addTokens(tableId, data.playerName, data.tokens)) {
+                    broadcast({
+                        type: "message",
+                        text: `${data.playerName} added tokens.`,
+                        tableId: tableId
+                    }, tableId);
+                }
+                return; //  ✅  Important: Return after handling
             }
             
             //  ✅  Handle other game actions separately
