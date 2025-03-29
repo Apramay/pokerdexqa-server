@@ -45,8 +45,8 @@ app.post("/registerTable", (req, res) => {
 
     tables.set(tableId, {
         solToToken,
-        smallBlindAmount: smallBlind,
-        bigBlindAmount: bigBlind,
+        smallBlindAmount: Number(smallBlind),
+        bigBlindAmount: Number(bigBlind),
                 gameType, // Store gameType
         players: [],
         tableCards: [],
