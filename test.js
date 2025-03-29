@@ -152,7 +152,7 @@ function startNewHand(tableId) {
         player.tokens -= blindAmount;
         player.currentBet = blindAmount;
         player.totalContribution = blindAmount; // ✅ Fix: Incorporate blinds into totalContribution
-        table.pot += blindAmount;
+table.pot += Number(blindAmount);
     });
     table.currentBet = table.bigBlindAmount;
     // Set the starting player (after the big blind)
