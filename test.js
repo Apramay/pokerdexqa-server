@@ -552,7 +552,6 @@ function resetGame(tableId) {
         }
     });
 
-    });
     console.log(` 🎲  New dealer is: ${table.players[table.dealerIndex].name}`);
     startNewHand(tableId); //  ✅  Start the new round with correct dealer
 }
