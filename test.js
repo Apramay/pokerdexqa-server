@@ -480,35 +480,50 @@ function distributePot(tableId) {
     });
 }
 
-function addTokens(tableId, playerName, additionalTokens) {
+function addTokens(tableId, playerName, additionalTokens, playerSolBalance) {
+    //  ✅  Check if it's between hands (round is 0 or no table cards)
     const table = tables.get(tableId);
     if (!table) return;
 
-    //  ✅  Check if it's between hands (e.g., round is 0 or game is being reset)
-    if (table.round !== 0 && table.tableCards.length > 0) {
+    if (table.round !== 0 || table.tableCards.length > 0) {
         console.log("❌ Cannot add tokens during a hand.");
-        return false; // Or send an error message to the client
+        return false;
     }
 
     const player = table.players.find(p => p.name === playerName);
     if (!player) {
         console.log("❌ Player not found.");
-        return false; // Or send an error message to the client
+        return false;
     }
 
     const maxTokens = table.bigBlindAmount * 100;
+    const solToToken = table.solToToken; //  ✅  Get the conversion rate
 
-    //  ✅  Check for limit game condition
+    //  ✅  Calculate SOL equivalent of tokens to be added
+    const solToAdd = additionalTokens / solToToken;
+
+    //  ✅  Check if player has enough SOL in their mock wallet
+    if (playerSolBalance < solToAdd) {
+        console.log("❌ Not enough SOL in mock wallet to add tokens.");
+        return false;
+    }
+
+    //  ✅  Limit game condition and token limit
     if (table.gameType === "limit") {
         if (player.tokens < maxTokens) {
-            const tokensToAdd = Math.min(additionalTokens, maxTokens - player.tokens); // Limit the add amount
+            const tokensToAdd = Math.min(additionalTokens, maxTokens - player.tokens);
             player.tokens += tokensToAdd;
+
+            //  ✅  Deduct SOL from "mock wallet" (server-side)
+            //  ⚠️  You'll need to store/manage the mock wallets server-side or pass the updated balance back to the client
+            //  ⚠️  For simplicity, this example assumes the player's SOL balance is passed correctly
+            //  ⚠️  In a real scenario, you'd likely have a database or in-memory store for user balances
             console.log(`✅ ${playerName} added ${tokensToAdd} tokens. New balance: ${player.tokens}`);
             broadcastGameState(tableId);
             return true;
         } else {
             console.log("❌ Player already has the maximum allowed tokens.");
-            return false; // Or send an error message to the client
+            return false;
         }
     } else {
         //  ✅  No-limit - Allow adding tokens (you might want to add some restrictions here too)
@@ -518,6 +533,7 @@ function addTokens(tableId, playerName, additionalTokens) {
         return true;
     }
 }
+
 
 function resetGame(tableId) {
     const table = tables.get(tableId);
@@ -904,16 +920,18 @@ wss.on('connection', function connection(ws) {
                 }
             }
             if (data.type === "addTokens") {
+                //  ✅  Include player's SOL balance from the client
                 const tableId = data.tableId;
-                if (addTokens(tableId, data.playerName, data.tokens)) {
+                if (addTokens(tableId, data.playerName, data.tokens, data.playerSolBalance)) {
                     broadcast({
                         type: "message",
                         text: `${data.playerName} added tokens.`,
                         tableId: tableId
                     }, tableId);
                 }
-                return; //  ✅  Important: Return after handling
+                return;
             }
+
             
             //  ✅  Handle other game actions separately
             if (data.type === 'join') {
