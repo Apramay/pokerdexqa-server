@@ -152,7 +152,7 @@ function startNewHand(tableId) {
         player.tokens -= blindAmount;
         player.currentBet = blindAmount;
         player.totalContribution = blindAmount; // ✅ Fix: Incorporate blinds into totalContribution
-table.pot += Number(blindAmount);
+table.pot += blinddAmount;
     });
     table.currentBet = table.bigBlindAmount;
     // Set the starting player (after the big blind)
@@ -428,51 +428,61 @@ function distributePot(tableId) {
 
     console.log("💰 Distributing the pot...");
 
-    // Only players who didn't fold are eligible
     const playersInHand = table.players.filter(p => p.status !== "folded");
 
-    // Cache hand evaluations
     const handStrengthMap = new Map();
     playersInHand.forEach(p => {
         const fullHand = p.hand.concat(table.tableCards);
         handStrengthMap.set(p.name, evaluateHand(fullHand));
     });
 
-    // Sort players by contribution (ascending)
-    const sorted = [...playersInHand].sort((a, b) => a.totalContribution - b.totalContribution);
-    const contributionLevels = [...new Set(sorted.map(p => p.totalContribution))];
+    const anyAllIn = playersInHand.some(p => p.allIn);
 
-    let totalPot = table.pot;
-    let remainingPlayers = [...playersInHand];
-    let lastLevel = 0;
-
-    for (const level of contributionLevels) {
-        // Eligible players: contributed >= this level
-        const eligible = remainingPlayers.filter(p => p.totalContribution >= level);
-
-        const levelAmount = (level - lastLevel) * eligible.length;
-
-        // Track and verify correct pot distribution
-        totalPot -= levelAmount;
-        lastLevel = level;
-
-        console.log(`💡 Side Pot Level ${level}: ${levelAmount} chips between ${eligible.map(p => p.name).join(", ")}`);
-
-        const winners = determineWinners(eligible, table, handStrengthMap);
-        const baseShare = Math.floor(levelAmount / winners.length);
-        let remainder = levelAmount % winners.length;
+    // ✅ CASE 1: No all-ins, single pot
+    if (!anyAllIn) {
+        const winners = determineWinners(playersInHand, table, handStrengthMap);
+        const baseShare = Math.floor(table.pot / winners.length);
+        let remainder = table.pot % winners.length;
 
         winners.forEach((winner, i) => {
             const winAmount = baseShare + (i < remainder ? 1 : 0);
             winner.tokens += winAmount;
-            console.log(`🏆 ${winner.name} wins ${winAmount} from side pot level ${level}`);
+            console.log(`🏆 ${winner.name} wins ${winAmount} from main pot`);
         });
 
-        // Remove players who are no longer in remaining levels
-        remainingPlayers = remainingPlayers.filter(p => p.totalContribution > level);
+    } else {
+        // ✅ CASE 2: Side pot logic needed
+        const sorted = [...playersInHand].sort((a, b) => a.totalContribution - b.totalContribution);
+        const contributionLevels = [...new Set(sorted.map(p => p.totalContribution))];
+
+        let totalPot = table.pot;
+        let remainingPlayers = [...playersInHand];
+        let lastLevel = 0;
+
+        for (const level of contributionLevels) {
+            const eligible = remainingPlayers.filter(p => p.totalContribution >= level);
+            const levelAmount = (level - lastLevel) * eligible.length;
+
+            totalPot -= levelAmount;
+            lastLevel = level;
+
+            console.log(`💡 Side Pot Level ${level}: ${levelAmount} chips between ${eligible.map(p => p.name).join(", ")}`);
+
+            const winners = determineWinners(eligible, table, handStrengthMap);
+            const baseShare = Math.floor(levelAmount / winners.length);
+            let remainder = levelAmount % winners.length;
+
+            winners.forEach((winner, i) => {
+                const winAmount = baseShare + (i < remainder ? 1 : 0);
+                winner.tokens += winAmount;
+                console.log(`🏆 ${winner.name} wins ${winAmount} from side pot level ${level}`);
+            });
+
+            remainingPlayers = remainingPlayers.filter(p => p.totalContribution > level);
+        }
     }
 
-    // Final cleanup
+    // ✅ Reset pot and contributions
     table.pot = 0;
     table.players.forEach(p => {
         p.currentBet = 0;
@@ -571,6 +581,7 @@ function resetGame(tableId) {
     console.log(` 🎲  New dealer is: ${table.players[table.dealerIndex].name}`);
     startNewHand(tableId); //  ✅  Start the new round with correct dealer
 }
+
 function determineWinners(playerList, table) {
     if (playerList.length === 0) return [];
 
@@ -614,6 +625,7 @@ function determineWinners(playerList, table) {
 
     return winners;
 }
+
 
 // Function to evaluate the hand of a player
 function evaluateHand(cards) {
@@ -852,7 +864,6 @@ function compareHands(handA, handB) {
     }
     return 0; // exact tie
 }
-
 // WebSocket server event handling
 wss.on('connection', function connection(ws) {
     console.log(' ✅  A new client connected');
@@ -916,7 +927,7 @@ wss.on('connection', function connection(ws) {
                 }
                 //  ✅  If all players have chosen, start the next round
                 if (playersWhoNeedToDecide.length === 0 && ws.tableId) {
-                    setTimeout(resetGame, 3000, ws.tableId);
+                    setTimeout(resetGame, 1000, ws.tableId);
                 }
             }
             if (data.type === "addTokens") {
@@ -1088,6 +1099,7 @@ if (betAmount <= player.tokens && betAmount > table.currentBet) {
     bettingRound(tableId);
 }
 }
+
 function handleCall(data, tableId) {
     const table = tables.get(tableId);
     if (!table) return;
@@ -1098,7 +1110,6 @@ function handleCall(data, tableId) {
     const requiredToCall = table.currentBet - player.currentBet;
     const chipsToAdd = Math.min(requiredToCall, player.tokens);
 
-    // Update contributions and pot
     player.tokens -= chipsToAdd;
     player.currentBet += chipsToAdd;
     player.totalContribution += chipsToAdd;
@@ -1110,10 +1121,29 @@ function handleCall(data, tableId) {
     }
 
     table.playersWhoActed.add(player.name);
+
     broadcast({
         type: "updateActionHistory",
         action: `${data.playerName} called ${chipsToAdd}`
     }, tableId);
+
+    broadcastGameState(tableId);
+
+    // ✅ Check: Only one player can still act (others are all-in or folded)
+    const activeNotAllIn = table.players.filter(p => p.status === "active" && !p.allIn && p.tokens > 0);
+    const activeOrAllIn = table.players.filter(p => p.status === "active" || p.allIn);
+
+    if (activeNotAllIn.length <= 1 && activeOrAllIn.length > 1) {
+        console.log("🛑 Only one player left who can act — skipping betting and going to showdown.");
+
+        // 🔄 Deal remaining community cards immediately
+        while (table.round < 3) {
+            nextRound(tableId);
+        }
+
+        showdown(tableId);
+        return;
+    }
 
     table.currentPlayerIndex = getNextPlayerIndex(table.currentPlayerIndex, tableId);
     if (table.currentPlayerIndex !== -1) {
@@ -1122,11 +1152,7 @@ function handleCall(data, tableId) {
         console.log("✅ All players have acted. Moving to next round.");
         setTimeout(nextRound, 1000, tableId);
     }
-
-    broadcastGameState(tableId);
 }
-
-
 function handleFold(data, tableId) {
 const table = tables.get(tableId);
 if (!table) return;
@@ -1161,6 +1187,7 @@ if (table.currentPlayerIndex !== -1) {
 }
 broadcastGameState(tableId);  //  ✅  Only update the UI once
 }
+
 function handleCheck(data, tableId) {
 const table = tables.get(tableId);
 if (!table) return;
