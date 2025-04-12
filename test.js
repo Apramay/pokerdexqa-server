@@ -37,7 +37,7 @@ function createDeck() {
     return deck.sort(() => Math.random() - 0.5); 
 }
 app.post("/registerTable", (req, res) => {
-    const { tableId, solToToken, smallBlind, bigBlind, gameType } = req.body;
+    const { tableId, solToToken, smallBlind, bigBlind, gameType, hostType } = req.body;
 
     if (tables.has(tableId)) {
         return res.status(400).json({ error: "Table already exists!" });
@@ -48,6 +48,7 @@ app.post("/registerTable", (req, res) => {
         smallBlindAmount: Number(smallBlind),
         bigBlindAmount: Number(bigBlind),
                 gameType, // Store gameType
+        hostType,
         players: [],
         tableCards: [],
         pot: 0,
@@ -374,7 +375,11 @@ function nextRound(tableId) {
     if (table.round === 0) {
         table.round++; 
         table.tableCards = dealHand(table.deckForGame, 3); // Flop
-
+if (table.hostType === "rake") {
+    const originalPot = table.pot;
+    table.pot = Math.floor(table.pot * 0.95); // Keep 95% in pot
+    console.log(`🏦 Rake taken at flop. Original Pot: ${originalPot}, After Rake: ${table.pot}`);
+}
         console.log("🃏 Flop dealt:", table.tableCards);
         broadcast({ type: "message", text: `Flop: ${JSON.stringify(table.tableCards)}`, tableId: tableId }, tableId);
     } else if (table.round === 1) {
